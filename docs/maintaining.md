@@ -54,8 +54,8 @@ The release workflow needs a secret `NPM_TOKEN`: a granular npm token that may p
 3. Run `npm run check`. It must pass.
 4. Tag `vX.Y.Z`, equal to the version in `package.json`, and push the tag.
 5. The release workflow publishes the tag with npm provenance. A published version then names the commit it came from. Nobody publishes
-   from a laptop. npm takes a minute or two to show the new version, and a package's first publish shows a placeholder version,
-   `0.0.0-stage`, until then.
+   from a laptop. npm takes a minute or two to show the new version.
+   Until then, the first publish of a package shows a placeholder version, `0.0.0-stage`.
 6. UnitPad moves to the new version with its own pull request.
 
 ## Not built
