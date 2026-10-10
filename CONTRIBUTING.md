@@ -55,6 +55,12 @@ it. The numbers are facts. The descriptions are your words, so paraphrase the so
 Each needs only Node. `npm run check` also holds every module to the rules of [`docs/style.md`](docs/style.md). A reviewer reads for the numbers and their
 sources.
 
+## The commit hook
+
+`npm install` points git at `.githooks/`. Its `pre-commit` runs the quick checks on what you staged: formatting, ESLint, markdownlint,
+the documents check, the names and version check, and the package contents. When a module is staged, it also runs the style check,
+which takes about 20 seconds. The tests and the values check run in CI. Skip the hook once with `git commit --no-verify`.
+
 ## Keeping numbers true
 
 Numbers go out of date. Each module says when it was last checked (`# checked: YYYY-MM`, or `unverified`), and UnitPad shows that on

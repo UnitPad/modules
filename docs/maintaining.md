@@ -64,4 +64,3 @@ publisher, so npm accepts the publish from that workflow alone. If a release fai
 - A check of the functions. `values.json` holds the values (`let`) only. A function's signature and its `@example` results are not compared.
 - A check that the checksums in `numbat-version.json` match a second source. They come from the release on GitHub, when the version was chosen.
 - Issues opened from the lists of stale modules and dead sources. The lists are in the summary of each run.
-- A git hook that runs `npm run check` before a commit.
