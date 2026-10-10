@@ -1,0 +1,20 @@
+{
+  // The documents of this repository: README.md, CONTRIBUTING.md and docs/. The pull request template is a form, not a document.
+  "globs": ["*.md", "docs/*.md"],
+  "ignores": ["node_modules", ".github"],
+  "config": {
+    "default": true,
+    // Tables, long links and wrapped prose: line length is not a docs problem here.
+    "MD013": false,
+    // A heading may repeat in a different section (e.g. "Why").
+    "MD024": { "siblings_only": true },
+    // Ordered lists are numbered 1., 2., 3.
+    "MD029": { "style": "ordered" },
+    // Emphasis used as a lead-in ("**Why:**") is not a heading.
+    "MD036": false,
+    // Bare URLs are fine in reference lists.
+    "MD034": false,
+    // Table pipe spacing is cosmetic, and the tables here are written compact on purpose (wide cells).
+    "MD060": false,
+  },
+}

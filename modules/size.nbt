@@ -1,0 +1,84 @@
+# Data sizes, overheads and ratios, plus platform size caps
+# Import with:  use size    then use the size_* values
+# title: Size
+# checked: unverified
+# description: IDs, packet overheads, media bitrates, compression ratios, replication overheads and platform size caps (max/min)
+# vendor: aws
+
+# --- Identifiers and records ---
+@url("https://www.rfc-editor.org/rfc/rfc9562")
+@description("UUID, binary (128 bits; 36 bytes as a hyphenated string)")
+let size_uuid = 16 B
+
+@url("https://en.wikipedia.org/wiki/64-bit_computing")
+@description("64-bit integer / timestamp / Snowflake-style ID")
+let size_int64 = 8 B
+
+# --- Network framing ---
+@url("https://en.wikipedia.org/wiki/Maximum_transmission_unit")
+@description("Ethernet MTU (1,500 B payload; 9,001 B jumbo frames inside AWS VPCs)")
+let size_mtu = 1500 B
+
+@url("https://www.rfc-editor.org/rfc/rfc9293")
+@description("IPv4 + TCP headers without options (20 + 20 B; ~52 B with common TCP options)")
+let size_tcp_ip_header = 40 B
+
+# --- Media bitrates (YouTube upload recommendations, SDR, 24-30 fps) ---
+# highlight: 1080p
+@url("https://support.google.com/youtube/answer/1722171")
+@description("1080p video bitrate (8 Mbps upload recommendation; delivered streams are often 3-6 Mbps)")
+let size_video_1080p = 8 Mbit/s
+
+@url("https://support.google.com/youtube/answer/1722171")
+@description("4K (2160p) video bitrate (35-45 Mbps upload recommendation)")
+let size_video_4k = 40 Mbit/s
+
+# --- Compression (Silesia corpus, single core) ---
+# highlight: zstd ratio
+@url("https://github.com/facebook/zstd")
+@description("zstd -1 compression ratio (2.9x; 510 MB/s compress, 1,550 MB/s decompress)")
+let size_ratio_zstd = 2.896
+
+@url("https://github.com/facebook/zstd")
+@description("LZ4 compression ratio (2.1x; 675 MB/s compress, 3,850 MB/s decompress)")
+let size_ratio_lz4 = 2.101
+
+@url("https://github.com/facebook/zstd")
+@description("zlib -1 (gzip) compression ratio (2.7x; 105 MB/s compress)")
+let size_ratio_zlib = 2.743
+
+# --- Redundancy overhead (raw bytes stored per logical byte) ---
+# highlight: replication
+@url("https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs/HDFSErasureCoding.html")
+@description("3x replication: 3 bytes stored per byte (200% overhead)")
+let size_replication_3x = 3
+
+@url("https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs/HDFSErasureCoding.html")
+@description("Reed-Solomon RS(6,3) erasure coding: 1.5 bytes stored per byte (50% overhead), tolerates 3 losses")
+let size_erasure_rs_6_3 = 1.5
+
+# --- Platform size caps (max / min) ---
+# highlight: S3 object max
+@url("https://docs.aws.amazon.com/AmazonS3/latest/userguide/qfacts.html")
+@description("S3 maximum object size (48.8 TiB, via multipart upload)")
+let size_s3_object_max = 48.8 TiB
+
+@url("https://docs.aws.amazon.com/AmazonS3/latest/userguide/qfacts.html")
+@description("S3 multipart minimum part size (5 MiB; the last part can be smaller; parts max out at 5 GiB)")
+let size_s3_part_min = 5 MiB
+
+@url("https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Constraints.html")
+@description("DynamoDB maximum item size (400 KiB, binary units, attribute names included)")
+let size_dynamodb_item_max = 400 KiB
+
+@url("https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Constraints.html")
+@description("DynamoDB maximum partition size (10 GiB; also the item-collection cap when a table has an LSI)")
+let size_dynamodb_partition_max = 10 GiB
+
+@url("https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/quotas-messages.html")
+@description("SQS maximum message size (1 MiB; larger payloads go to S3 via the extended client)")
+let size_sqs_message_max = 1 MiB
+
+@url("https://docs.aws.amazon.com/lambda/latest/dg/gettingstarted-limits.html")
+@description("Lambda synchronous invocation payload, request or response (6 MB each)")
+let size_lambda_payload_max = 6 MB

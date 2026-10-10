@@ -1,0 +1,7 @@
+node_modules
+package-lock.json
+# prose and modules are written by hand: not for a code formatter
+*.md
+*.nbt
+.numbat
+tools/numbat

@@ -1,0 +1,25 @@
+name: A number is wrong or out of date
+description: A value in a module disagrees with its source, or its source has changed
+labels: [data]
+body:
+  - type: input
+    id: value
+    attributes:
+      label: The value
+      description: The name as a sheet writes it, such as `throughput_s3_get_requests_per_prefix`.
+    validations:
+      required: true
+  - type: input
+    id: source
+    attributes:
+      label: The source page
+      description: The page that gives the right figure.
+    validations:
+      required: true
+  - type: textarea
+    id: figure
+    attributes:
+      label: The figure as the page gives it
+      description: A short quote or the table row, so a reviewer can find it without searching.
+    validations:
+      required: true

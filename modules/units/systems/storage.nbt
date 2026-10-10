@@ -1,0 +1,21 @@
+# Shared units for disk and volume I/O. In every session (via `units::systems`), not importable.
+# title: Shared units (storage)
+# description: The I/O operation and IOPS
+
+# One read or write a disk or volume serves. Its own dimension, not `operation`:
+# Numbat shows a value in the one unit defined as exactly its unit, so if `IOPS`
+# were `operation/s`, every operation rate (Redis, SQL) would print as IOPS.
+# Relate the two with an explicit ratio (`io_per_op = 2 io/operation`).
+dimension IoOperation
+
+@name("I/O operation")
+@url("https://en.wikipedia.org/wiki/IOPS")
+@aliases(ios)
+unit io: IoOperation
+
+# I/O operations per second, as disks and volumes are rated (`500 kIOPS`)
+@name("I/O operations per second")
+@url("https://en.wikipedia.org/wiki/IOPS")
+@metric_prefixes
+@aliases(IOPS: short, iops)
+unit IOPS: IoOperation / Time = io / second

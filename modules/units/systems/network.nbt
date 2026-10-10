@@ -1,0 +1,11 @@
+# Shared units for the network. In every session (via `units::systems`), not importable.
+# title: Shared units (network)
+# description: The packet
+
+# One packet on the network; instance and NIC limits are quoted in packets/s
+dimension Packet
+
+@name("Packet")
+@url("https://en.wikipedia.org/wiki/Network_packet")
+@aliases(pkt, pkts, packets)
+unit packet: Packet

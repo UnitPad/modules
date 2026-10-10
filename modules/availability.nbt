@@ -1,0 +1,66 @@
+# Availability and durability
+# Nines, downtime budgets, composing components, and real failure rates.
+# availability_serial / availability_parallel assume independent failures;
+# correlated failures (same rack, AZ, deploy, config push) make reality worse.
+# Import with:  use availability    then use the availability_* values and functions
+# title: Availability
+# checked: unverified
+# description: Nines and downtime budgets, serial/parallel composition, disk AFR, S3/EC2 durability and SLAs
+# vendor: aws, backblaze
+
+@url("https://en.wikipedia.org/wiki/High_availability")
+@description("Availability with n nines (n ≥ 0): availability_nines(4) is 0.9999")
+@example("availability_nines(4)")
+fn availability_nines(n: Scalar) -> Scalar = 1 - 10^(-n)
+
+@url("https://en.wikipedia.org/wiki/High_availability")
+@description("Downtime per year at availability fraction a (0 ≤ a ≤ 1; pass 0.999 or 99.9%, not 99.9). 99.9% is ~8.8 h, 99.99% is ~53 min, 99.999% is ~5.3 min")
+@example("availability_downtime_year(0.999)")
+fn availability_downtime_year(a: Scalar) -> Time = (1 - a) * 1 year
+
+@url("https://en.wikipedia.org/wiki/High_availability")
+@description("Average downtime per month at availability fraction a (0 ≤ a ≤ 1; pass 0.999 or 99.9%, not 99.9), using Numbat's average month unit. 99.9% is ~44 min, 99.99% is ~4.4 min")
+@example("availability_downtime_month(0.999)")
+fn availability_downtime_month(a: Scalar) -> Time = (1 - a) * 1 month
+
+@url("https://en.wikipedia.org/wiki/Reliability_engineering")
+@description("Availability of two components in series (both must work): multiply their availability fractions a and b, each from 0 to 1")
+@example("availability_serial(0.99, 0.999)")
+fn availability_serial(a: Scalar, b: Scalar) -> Scalar = a * b
+
+@url("https://en.wikipedia.org/wiki/Reliability_engineering")
+@description("Availability of n independent replicas where any one suffices: 1 - (1 - a)^n. Pass availability a from 0 to 1 and a nonnegative replica count n")
+@example("availability_parallel(0.99, 3)")
+fn availability_parallel(a: Scalar, n: Scalar) -> Scalar = 1 - (1 - a)^n
+
+# --- Measured failure rates ---
+# highlight: HDD AFR
+@url("https://www.backblaze.com/blog/backblaze-drive-stats-for-2025/")
+@description("Hard drive annualized failure rate (Backblaze 2025: 1.36% across ~344k drives; lifetime 1.30%)")
+let availability_hdd_afr = 0.0136
+
+@url("https://docs.aws.amazon.com/ebs/latest/userguide/general-purpose.html")
+@description("EBS gp3/gp2 volume annual failure rate (AWS: no higher than 0.2%)")
+let availability_ebs_afr = 0.002
+
+# --- Provider design targets and SLAs ---
+# highlight: S3 durability
+@url("https://aws.amazon.com/s3/storage-classes/")
+@description("S3 Standard designed durability (11 nines)")
+let availability_s3_durability = 0.99999999999
+
+@url("https://aws.amazon.com/s3/storage-classes/")
+@description("S3 Standard designed availability (99.99%)")
+let availability_s3_designed = 0.9999
+
+@url("https://aws.amazon.com/s3/sla/")
+@description("S3 Standard availability SLA, what AWS credits against (99.9%)")
+let availability_s3_sla = 0.999
+
+@url("https://aws.amazon.com/compute/sla/")
+@description("EC2 region-level SLA for instances spread over multiple AZs (99.99%)")
+let availability_ec2_region_sla = 0.9999
+
+@url("https://aws.amazon.com/compute/sla/")
+@description("EC2 single-instance SLA (99.5%, ~3.6 h/month)")
+let availability_ec2_instance_sla = 0.995

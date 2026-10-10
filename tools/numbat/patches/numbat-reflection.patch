@@ -1,0 +1,2242 @@
+diff --git a/numbat-wasm/src/eval.rs b/numbat-wasm/src/eval.rs
+new file mode 100644
+index 00000000..1acaeb56
+--- /dev/null
++++ b/numbat-wasm/src/eval.rs
+@@ -0,0 +1,229 @@
++//! Evaluation as data.
++//!
++//! `Numbat.eval(code, source)` runs the code as `interpret` does and answers, instead of rendered text, what happened:
++//! `{"ok", "value", "type", "prints", "diagnostics", "uses", "effects"}`.
++//!
++//! - `value` and `type` are `values.rs` and `types.rs`; `type` is the type of the last statement when it is an expression.
++//! - `diagnostics` are the errors with their labels and notes, spans in UTF-16 units of the text they point into.
++//! - `uses` are the names the typechecker resolved: where each was used, what it is, and where it was defined (a source and a
++//!   span in it): the relation a go-to-definition or a colouring is made of.
++//! - `effects` says whether the code read the clock or the exchange rates.
++//!
++//! `source` says what the code is: empty is text typed into a sheet, `module:cost` a module, `file:line:3` a named file.
++
++use std::collections::HashMap;
++use std::sync::{Arc, Mutex};
++
++use codespan_reporting::diagnostic::{LabelStyle, Severity};
++use numbat::diagnostic::{ErrorDiagnostic, ResolverDiagnostic};
++use numbat::facts::{Use, UseKind};
++use numbat::markup::{Formatter, PlainTextFormatter};
++use numbat::prefix::Prefix;
++use numbat::resolver::{CodeSource, ModulePath};
++use numbat::{InterpreterResult, InterpreterSettings, NumbatError};
++use wasm_bindgen::prelude::*;
++
++use crate::json::{J, utf16_offsets};
++use crate::types::scheme_json;
++use crate::values::value_json;
++use crate::Numbat;
++
++fn parse_source(source: &str) -> CodeSource {
++    if let Some(name) = source.strip_prefix("module:") {
++        CodeSource::Module(ModulePath(name.split("::").map(Into::into).collect()), None)
++    } else if let Some(name) = source.strip_prefix("file:") {
++        CodeSource::File(name.into())
++    } else {
++        CodeSource::Text
++    }
++}
++
++pub fn source_json(source: &CodeSource) -> J {
++    match source {
++        CodeSource::Text => J::obj(vec![("kind", J::s("text"))]),
++        CodeSource::Internal => J::obj(vec![("kind", J::s("internal"))]),
++        CodeSource::File(path) => J::obj(vec![("kind", J::s("file")), ("name", J::s(path.to_string_lossy().to_string()))]),
++        CodeSource::Module(path, _) => J::obj(vec![("kind", J::s("module")), ("name", J::s(path.to_string()))]),
++    }
++}
++
++/// Byte offsets of a source as UTF-16 units, for each source met (the text of the code, a module's, another line's).
++struct Offsets<'a> {
++    ctx: &'a numbat::Context,
++    tables: HashMap<usize, Option<Vec<usize>>>,
++}
++
++impl<'a> Offsets<'a> {
++    fn new(ctx: &'a numbat::Context) -> Self {
++        Offsets { ctx, tables: HashMap::new() }
++    }
++
++    /// `byte` of source `id` in UTF-16 units; the byte itself when the text of the source is not known.
++    fn units(&mut self, id: usize, byte: usize) -> usize {
++        let ctx = self.ctx;
++        let table = self.tables.entry(id).or_insert_with(|| ctx.source_text(id).map(|t| utf16_offsets(&t)));
++        match table {
++            Some(t) => t[byte.min(t.len() - 1)],
++            None => byte,
++        }
++    }
++}
++
++fn span_json(offsets: &mut Offsets, span: &numbat::span::Span) -> J {
++    let id = span.code_source_id;
++    J::obj(vec![
++        ("start", J::n(offsets.units(id, span.start.as_usize()))),
++        ("end", J::n(offsets.units(id, span.end.as_usize()))),
++    ])
++}
++
++fn use_json(offsets: &mut Offsets, u: &Use) -> J {
++    let (kind, extra): (&str, Vec<(&str, J)>) = match &u.kind {
++        UseKind::Variable => ("variable", vec![]),
++        UseKind::Function => ("function", vec![]),
++        UseKind::Unit { prefix, canonical } => (
++            "unit",
++            vec![
++                ("canonical", J::s(canonical.as_str())),
++                (
++                    "prefix",
++                    match prefix {
++                        None => J::Null,
++                        Some(Prefix::Metric(exp)) => J::obj(vec![("type", J::s("metric")), ("exp", J::Num(*exp as f64))]),
++                        Some(Prefix::Binary(exp)) => J::obj(vec![("type", J::s("binary")), ("exp", J::Num(*exp as f64))]),
++                    },
++                ),
++            ],
++        ),
++        UseKind::Predefined => ("predefined", vec![]),
++        UseKind::Dimension => ("dimension", vec![]),
++        UseKind::Struct => ("struct", vec![]),
++        UseKind::Unknown => ("unknown", vec![]),
++    };
++    let mut fields = vec![
++        ("span", span_json(offsets, &u.span)),
++        ("name", J::s(u.name.as_str())),
++        ("kind", J::s(kind)),
++    ];
++    fields.extend(extra);
++    if let Some(def) = &u.definition {
++        let source = source_json(&offsets.ctx.code_source(def.code_source_id));
++        fields.push(("definition", J::obj(vec![("source", source), ("span", span_json(offsets, def))])));
++    }
++    J::obj(fields)
++}
++
++fn diagnostic_json(offsets: &mut Offsets, d: &numbat::Diagnostic) -> J {
++    let severity = match d.severity {
++        Severity::Bug => "bug",
++        Severity::Error => "error",
++        Severity::Warning => "warning",
++        Severity::Note => "note",
++        Severity::Help => "help",
++    };
++    let labels = d
++        .labels
++        .iter()
++        .map(|l| {
++            J::obj(vec![
++                ("primary", J::Bool(matches!(l.style, LabelStyle::Primary))),
++                ("source", source_json(&offsets.ctx.code_source(l.file_id))),
++                ("start", J::n(offsets.units(l.file_id, l.range.start))),
++                ("end", J::n(offsets.units(l.file_id, l.range.end))),
++                ("message", J::s(l.message.as_str())),
++            ])
++        })
++        .collect();
++    J::obj(vec![
++        ("severity", J::s(severity)),
++        ("code", J::opt(d.code.as_ref().map(|c| J::s(c.as_str())))),
++        ("message", J::s(d.message.as_str())),
++        ("labels", J::Arr(labels)),
++        ("notes", J::Arr(d.notes.iter().map(|n| J::s(n.as_str())).collect())),
++    ])
++}
++
++fn diagnostics_of(ctx: &numbat::Context, error: &NumbatError) -> Vec<numbat::Diagnostic> {
++    match error {
++        NumbatError::ResolverError(e) => e.diagnostics(),
++        NumbatError::NameResolutionError(e) => e.diagnostics(),
++        NumbatError::TypeCheckError(e) => e.diagnostics(),
++        NumbatError::RuntimeError(e) => ResolverDiagnostic { resolver: ctx.resolver(), error: e }.diagnostics(),
++    }
++}
++
++#[wasm_bindgen]
++impl Numbat {
++    /// Run `code` and say what happened, as JSON (see the module doc).
++    pub fn eval(&mut self, code: &str, source: &str) -> String {
++        let printed: Arc<Mutex<Vec<numbat::markup::Markup>>> = Arc::new(Mutex::new(vec![]));
++        let sink = printed.clone();
++        let mut settings = InterpreterSettings {
++            print_fn: Box::new(move |m: &numbat::markup::Markup| sink.lock().unwrap().push(m.clone())),
++        };
++        let _ = numbat::facts::take_effects(); // what was read before this code is not this code's
++        let _ = self.ctx.take_uses(); // nor are the names resolved before it
++        let _ = numbat::facts::take_hole();
++        let result = self.ctx.interpret_with_settings(&mut settings, code, parse_source(source));
++        let effects = numbat::facts::take_effects();
++        // The names of this code, not of the modules it brought in (`use cost` resolves every name of `cost` too): the uses whose
++        // source is this code's text.
++        let uses: Vec<Use> = self
++            .ctx
++            .take_uses()
++            .into_iter()
++            .filter(|u| self.ctx.source_text(u.span.code_source_id).as_deref() == Some(code))
++            .collect();
++        let mut offsets = Offsets::new(&self.ctx);
++        let prints: Vec<J> = printed
++            .lock()
++            .unwrap()
++            .iter()
++            .map(|m| J::s(PlainTextFormatter {}.format(m, false).to_string()))
++            .collect();
++        let registry = self.ctx.dimension_registry();
++
++        let mut fields: Vec<(&str, J)> = Vec::new();
++        match &result {
++            Ok((statements, outcome)) => {
++                fields.push(("ok", J::Bool(true)));
++                let value = match outcome {
++                    InterpreterResult::Value(v) => value_json(v),
++                    InterpreterResult::Continue => J::Null,
++                };
++                fields.push(("value", value));
++                let ty = statements
++                    .last()
++                    .and_then(|s| s.as_expression())
++                    .map(|e| scheme_json(&e.get_type_scheme(), registry));
++                fields.push(("type", J::opt(ty)));
++                fields.push(("diagnostics", J::Arr(vec![])));
++            }
++            Err(error) => {
++                fields.push(("ok", J::Bool(false)));
++                fields.push(("value", J::Null));
++                fields.push(("type", J::Null));
++                let diagnostics = diagnostics_of(&self.ctx, error).iter().map(|d| diagnostic_json(&mut offsets, d)).collect();
++                fields.push(("diagnostics", J::Arr(diagnostics)));
++            }
++        }
++        // a typed hole (`?`): the type the typechecker expects there, and the names Numbat finds relevant for it
++        if let Some(hole) = numbat::facts::take_hole() {
++            fields.push((
++                "hole",
++                J::obj(vec![
++                    ("span", span_json(&mut offsets, &hole.span)),
++                    ("type", scheme_json(&hole.scheme, registry)),
++                    ("matches", J::Arr(hole.matches.iter().map(|m| J::s(m.as_str())).collect())),
++                ]),
++            ));
++        }
++        fields.push(("prints", J::Arr(prints)));
++        fields.push(("uses", J::Arr(uses.iter().map(|u| use_json(&mut offsets, u)).collect())));
++        fields.push((
++            "effects",
++            J::obj(vec![("clock", J::Bool(effects.clock)), ("exchangeRates", J::Bool(effects.exchange_rates))]),
++        ));
++        J::obj(fields).dump()
++    }
++}
+diff --git a/numbat-wasm/src/json.rs b/numbat-wasm/src/json.rs
+new file mode 100644
+index 00000000..f10ebe72
+--- /dev/null
++++ b/numbat-wasm/src/json.rs
+@@ -0,0 +1,113 @@
++//! A small JSON value for what the wasm module answers (no dependency: the answers are plain data).
++
++use std::fmt::Write;
++
++#[derive(Debug, Clone)]
++pub enum J {
++    Null,
++    Bool(bool),
++    Num(f64),
++    Str(String),
++    Arr(Vec<J>),
++    Obj(Vec<(String, J)>),
++}
++
++impl J {
++    pub fn s(s: impl Into<String>) -> J {
++        J::Str(s.into())
++    }
++
++    pub fn n(n: usize) -> J {
++        J::Num(n as f64)
++    }
++
++    pub fn obj(fields: Vec<(&str, J)>) -> J {
++        J::Obj(fields.into_iter().map(|(k, v)| (k.to_string(), v)).collect())
++    }
++
++    pub fn opt(v: Option<J>) -> J {
++        v.unwrap_or(J::Null)
++    }
++
++    pub fn dump(&self) -> String {
++        let mut out = String::new();
++        self.write(&mut out);
++        out
++    }
++
++    fn write(&self, out: &mut String) {
++        match self {
++            J::Null => out.push_str("null"),
++            J::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
++            J::Num(n) => {
++                if n.is_finite() {
++                    if n.fract() == 0.0 && n.abs() < 1e15 {
++                        let _ = write!(out, "{}", *n as i64);
++                    } else {
++                        let _ = write!(out, "{n}");
++                    }
++                } else {
++                    // JSON has no NaN or infinity: they are named, as strings
++                    out.push('"');
++                    out.push_str(if n.is_nan() { "NaN" } else if *n > 0.0 { "inf" } else { "-inf" });
++                    out.push('"');
++                }
++            }
++            J::Str(s) => write_string(s, out),
++            J::Arr(items) => {
++                out.push('[');
++                for (i, item) in items.iter().enumerate() {
++                    if i > 0 {
++                        out.push(',');
++                    }
++                    item.write(out);
++                }
++                out.push(']');
++            }
++            J::Obj(fields) => {
++                out.push('{');
++                for (i, (k, v)) in fields.iter().enumerate() {
++                    if i > 0 {
++                        out.push(',');
++                    }
++                    write_string(k, out);
++                    out.push(':');
++                    v.write(out);
++                }
++                out.push('}');
++            }
++        }
++    }
++}
++
++fn write_string(s: &str, out: &mut String) {
++    out.push('"');
++    for ch in s.chars() {
++        match ch {
++            '"' => out.push_str("\\\""),
++            '\\' => out.push_str("\\\\"),
++            '\n' => out.push_str("\\n"),
++            '\r' => out.push_str("\\r"),
++            '\t' => out.push_str("\\t"),
++            c if (c as u32) < 0x20 => {
++                let _ = write!(out, "\\u{:04x}", c as u32);
++            }
++            c => out.push(c),
++        }
++    }
++    out.push('"');
++}
++
++/// The offset of every byte of `text` in UTF-16 units (JavaScript's count), and one past the end.
++pub fn utf16_offsets(text: &str) -> Vec<usize> {
++    let mut units = vec![0usize; text.len() + 1];
++    let mut at = 0usize;
++    for (byte, ch) in text.char_indices() {
++        for k in 0..ch.len_utf8() {
++            units[byte + k] = at;
++        }
++        at += ch.len_utf16();
++    }
++    units[text.len()] = at;
++    units
++}
+diff --git a/numbat-wasm/src/lex.rs b/numbat-wasm/src/lex.rs
+new file mode 100644
+index 00000000..ce20141b
+--- /dev/null
++++ b/numbat-wasm/src/lex.rs
+@@ -0,0 +1,73 @@
++//! Lexing: the tokens of a text, and what is between them.
++//!
++//! `lex(text)` tokenizes each line with Numbat's own tokenizer (a line is where an error stops: the lines after it are still
++//! read) and answers, in UTF-16 units of the whole text:
++//! `{"tokens":[[kind,start,end],…],"trivia":[[kind,start,end],…],"errors":[[start,end,kind],…]}`.
++//! `kind` is Numbat's `TokenKind`; trivia is `whitespace` and `comment` (a comment runs to the end of its line).
++
++use numbat::tokenizer::{TokenKind, tokenize};
++use wasm_bindgen::prelude::*;
++
++use crate::json::{J, utf16_offsets};
++
++/// The name of a token kind: `IntegerWithBase` for `IntegerWithBase(16)`.
++fn kind_name(kind: TokenKind) -> String {
++    let debug = format!("{kind:?}");
++    debug.split('(').next().unwrap_or("").to_string()
++}
++
++#[wasm_bindgen]
++pub fn lex(text: &str) -> String {
++    let units = utf16_offsets(text);
++    let mut tokens = Vec::new();
++    let mut trivia = Vec::new();
++    let mut errors = Vec::new();
++    let mut line_start = 0usize;
++    for line in text.split('\n') {
++        let line_end = line_start + line.len();
++        match tokenize(line, 0) {
++            Ok(list) => {
++                let mut covered = 0usize; // bytes of the line accounted for
++                for token in list.iter().filter(|t| t.kind != TokenKind::Eof) {
++                    let start = token.span.start.as_usize().min(line.len());
++                    let end = (start + token.lexeme.len()).min(line.len());
++                    trivia_between(line, covered, start, line_start, &units, &mut trivia);
++                    tokens.push(J::Arr(vec![
++                        J::s(kind_name(token.kind)),
++                        J::n(units[line_start + start]),
++                        J::n(units[line_start + end]),
++                    ]));
++                    covered = end;
++                }
++                trivia_between(line, covered, line.len(), line_start, &units, &mut trivia);
++            }
++            Err(e) => {
++                let start = e.span.start.as_usize().min(line.len());
++                let end = (e.span.end.as_usize() + 1).min(line.len()).max(start);
++                errors.push(J::Arr(vec![
++                    J::n(units[line_start + start]),
++                    J::n(units[line_start + end]),
++                    J::s(format!("{:?}", e.kind)),
++                ]));
++            }
++        }
++        line_start = line_end + 1;
++    }
++    J::obj(vec![("tokens", J::Arr(tokens)), ("trivia", J::Arr(trivia)), ("errors", J::Arr(errors))]).dump()
++}
++
++/// The whitespace and the comment in `line[from..to]`, which no token covers.
++fn trivia_between(line: &str, from: usize, to: usize, line_start: usize, units: &[usize], out: &mut Vec<J>) {
++    let mut at = from;
++    while at < to {
++        let rest = &line[at..to];
++        let (kind, len) = if rest.starts_with('#') {
++            ("comment", rest.len())
++        } else {
++            let len = rest.find('#').unwrap_or(rest.len());
++            ("whitespace", len)
++        };
++        out.push(J::Arr(vec![J::s(kind), J::n(units[line_start + at]), J::n(units[line_start + at + len])]));
++        at += len;
++    }
++}
+diff --git a/numbat-wasm/src/lib.rs b/numbat-wasm/src/lib.rs
+index 313176b3..e94dae91 100644
+--- a/numbat-wasm/src/lib.rs
++++ b/numbat-wasm/src/lib.rs
+@@ -1,3 +1,12 @@
++mod eval;
++mod json;
++mod lex;
++mod parse;
++mod reflect;
++mod schema;
++mod tables;
++mod types;
++mod values;
+ mod jquery_terminal_formatter;
+ mod utils;
+ 
+@@ -85,6 +94,12 @@ impl Numbat {
+         }
+     }
+ 
++    /// A copy of the interpreter as it is now (UnitPad patch): what has been defined is in both, and what is run in one is not
++    /// in the other. It is what lets the last line of a sheet be run again without running the others.
++    pub fn fork(&self) -> Numbat {
++        Numbat { ctx: self.ctx.clone(), enable_pretty_printing: self.enable_pretty_printing, format_type: self.format_type }
++    }
++
+     pub fn set_exchange_rates(&mut self, xml_content: &str) {
+         Context::set_exchange_rates(xml_content);
+         let _ = self
+@@ -102,6 +117,16 @@ impl Numbat {
+     }
+ 
+     pub fn interpret(&mut self, code: &str) -> InterpreterOutput {
++        self.interpret_source(code, CodeSource::Text)
++    }
++
++    /// `interpret` for code that belongs to a named module (`cost`, `latency::llm`): what it defines says where it came from.
++    pub fn interpret_in(&mut self, code: &str, module: &str) -> InterpreterOutput {
++        let path = numbat::resolver::ModulePath(module.split("::").map(Into::into).collect());
++        self.interpret_source(code, CodeSource::Module(path, None))
++    }
++
++    fn interpret_source(&mut self, code: &str, source: CodeSource) -> InterpreterOutput {
+         let mut output = String::new();
+ 
+         let to_be_printed: Arc<Mutex<Vec<m::Markup>>> = Arc::new(Mutex::new(vec![]));
+@@ -121,7 +146,7 @@ impl Numbat {
+ 
+         match self
+             .ctx
+-            .interpret_with_settings(&mut settings, code, CodeSource::Text)
++            .interpret_with_settings(&mut settings, code, source)
+             .map_err(|b| *b)
+         {
+             Ok((statements, result)) => {
+diff --git a/numbat-wasm/src/parse.rs b/numbat-wasm/src/parse.rs
+new file mode 100644
+index 00000000..40d0d32c
+--- /dev/null
++++ b/numbat-wasm/src/parse.rs
+@@ -0,0 +1,40 @@
++//! Parsing: the syntax tree of a text, as generic data.
++//!
++//! `parse(text)` answers `{"statements":[node,…],"errors":[{"code","message","span"},…]}`. A node is `{"t": kind, "f": {fields}}`
++//! or `{"t": kind, "a": [items]}` (see `reflect.rs`), with every span in UTF-16 units of the text. The statements before an error
++//! are given, and the error, with its position, stands for the statement that could not be read: the tree exists for broken input.
++
++use numbat::parser::parse as numbat_parse;
++use wasm_bindgen::prelude::*;
++
++use crate::json::{J, utf16_offsets};
++use crate::reflect::debug_to_json;
++
++#[wasm_bindgen]
++pub fn parse(text: &str) -> String {
++    let units = utf16_offsets(text);
++    let (statements, errors) = match numbat_parse(text, 0) {
++        Ok(statements) => (statements, Vec::new()),
++        Err((statements, errors)) => (statements, errors),
++    };
++    let nodes: Vec<J> = statements.iter().map(|s| debug_to_json(&format!("{s:?}"), &units)).collect();
++    let errs: Vec<J> = errors
++        .iter()
++        .map(|e| {
++            let start = units[e.span.start.as_usize().min(text.len())];
++            let end = units[e.span.end.as_usize().min(text.len())];
++            J::obj(vec![
++                ("code", kind_of(&format!("{:?}", e.kind))),
++                ("message", J::s(e.to_string())),
++                ("span", J::obj(vec![("start", J::n(start)), ("end", J::n(end))])),
++            ])
++        })
++        .collect();
++    J::obj(vec![("statements", J::Arr(nodes)), ("errors", J::Arr(errs))]).dump()
++}
++
++/// The name of an error kind: `ExpectedPrimary` from `ExpectedPrimary` or `TrailingEqualSign("x")`.
++fn kind_of(debug: &str) -> J {
++    let end = debug.find(['(', ' ', '{']).unwrap_or(debug.len());
++    J::s(&debug[..end])
++}
+diff --git a/numbat-wasm/src/reflect.rs b/numbat-wasm/src/reflect.rs
+new file mode 100644
+index 00000000..51950c6f
+--- /dev/null
++++ b/numbat-wasm/src/reflect.rs
+@@ -0,0 +1,271 @@
++//! The shape of a Rust value, as data, from its `Debug` text.
++//!
++//! Numbat's syntax tree and typed tree derive `Debug`, and the derived text is regular: a name, then `(…)` or `{ field: value }`,
++//! lists, strings, numbers. Reading that into JSON gives a generic tree (`{"t": name, "f": {fields}}` or `{"t": name, "a":
++//! [items]}`) without a line of code for each kind of node, so a node kind Numbat adds appears in the tree on its own and
++//! nothing is dropped. `Span` becomes `{start, end}` in UTF-16 units. `None` is null and `Some(x)` is `x`.
++
++use crate::json::J;
++
++pub fn debug_to_json(text: &str, units: &[usize]) -> J {
++    let chars: Vec<char> = text.chars().collect();
++    let mut p = Parser { chars: &chars, at: 0, units };
++    p.value()
++}
++
++struct Parser<'a> {
++    chars: &'a [char],
++    at: usize,
++    units: &'a [usize],
++}
++
++impl Parser<'_> {
++    fn peek(&self) -> Option<char> {
++        self.chars.get(self.at).copied()
++    }
++
++    fn skip_space(&mut self) {
++        while self.peek().is_some_and(char::is_whitespace) {
++            self.at += 1;
++        }
++    }
++
++    fn eat(&mut self, c: char) -> bool {
++        self.skip_space();
++        if self.peek() == Some(c) {
++            self.at += 1;
++            true
++        } else {
++            false
++        }
++    }
++
++    fn value(&mut self) -> J {
++        self.skip_space();
++        match self.peek() {
++            None => J::Null,
++            Some('"') => J::Str(self.string()),
++            Some('\'') => J::Str(self.char_literal()),
++            Some('[') => {
++                self.at += 1;
++                J::Arr(self.items(']'))
++            }
++            Some('(') => {
++                self.at += 1;
++                J::Arr(self.items(')'))
++            }
++            Some('{') => {
++                self.at += 1;
++                self.map()
++            }
++            Some(c) if c.is_ascii_digit() || c == '-' => self.number(),
++            Some(_) => self.named(),
++        }
++    }
++
++    fn items(&mut self, close: char) -> Vec<J> {
++        let mut items = Vec::new();
++        loop {
++            if self.eat(close) || self.peek().is_none() {
++                return items;
++            }
++            items.push(self.value());
++            self.eat(',');
++        }
++    }
++
++    /// `{ key: value, … }` of a map (a struct has its name before the brace and is read by `named`).
++    fn map(&mut self) -> J {
++        let mut fields = Vec::new();
++        loop {
++            if self.eat('}') || self.peek().is_none() {
++                return J::Obj(fields);
++            }
++            let key = match self.value() {
++                J::Str(s) => s,
++                other => other.dump(),
++            };
++            self.eat(':');
++            let value = self.value();
++            fields.push((key, value));
++            self.eat(',');
++        }
++    }
++
++    fn number(&mut self) -> J {
++        let start = self.at;
++        if self.peek() == Some('-') {
++            self.at += 1;
++        }
++        while self.peek().is_some_and(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_') {
++            self.at += 1;
++            // an exponent may carry a sign: `1e-9`
++            if matches!(self.chars.get(self.at - 1), Some('e' | 'E'))
++                && matches!(self.peek(), Some('-' | '+'))
++                && self.chars[start..self.at].iter().any(|c| c.is_ascii_digit())
++            {
++                self.at += 1;
++            }
++        }
++        let word: String = self.chars[start..self.at].iter().collect();
++        match word.parse::<f64>() {
++            Ok(n) => J::Num(n),
++            Err(_) => J::Str(word),
++        }
++    }
++
++    fn string(&mut self) -> String {
++        self.at += 1; // the opening quote
++        let mut out = String::new();
++        while let Some(c) = self.peek() {
++            self.at += 1;
++            match c {
++                '"' => break,
++                '\\' => match self.peek() {
++                    Some('n') => {
++                        self.at += 1;
++                        out.push('\n');
++                    }
++                    Some('t') => {
++                        self.at += 1;
++                        out.push('\t');
++                    }
++                    Some('r') => {
++                        self.at += 1;
++                        out.push('\r');
++                    }
++                    Some('u') => {
++                        // \u{1f600}
++                        self.at += 1;
++                        if self.peek() == Some('{') {
++                            self.at += 1;
++                            let mut hex = String::new();
++                            while let Some(h) = self.peek() {
++                                self.at += 1;
++                                if h == '}' {
++                                    break;
++                                }
++                                hex.push(h);
++                            }
++                            if let Some(ch) = u32::from_str_radix(&hex, 16).ok().and_then(char::from_u32) {
++                                out.push(ch);
++                            }
++                        }
++                    }
++                    Some(other) => {
++                        self.at += 1;
++                        out.push(other);
++                    }
++                    None => {}
++                },
++                c => out.push(c),
++            }
++        }
++        out
++    }
++
++    fn char_literal(&mut self) -> String {
++        self.at += 1;
++        let mut out = String::new();
++        while let Some(c) = self.peek() {
++            self.at += 1;
++            match c {
++                '\'' => break,
++                '\\' => {
++                    if let Some(next) = self.peek() {
++                        self.at += 1;
++                        out.push(match next {
++                            'n' => '\n',
++                            't' => '\t',
++                            other => other,
++                        });
++                    }
++                }
++                c => out.push(c),
++            }
++        }
++        out
++    }
++
++    fn name(&mut self) -> String {
++        let start = self.at;
++        while let Some(c) = self.peek() {
++            if c.is_alphanumeric() || c == '_' {
++                self.at += 1;
++            } else if c == ':' && self.chars.get(self.at + 1) == Some(&':') {
++                self.at += 2; // a path: `Foo::Bar`
++            } else {
++                break;
++            }
++        }
++        if self.at == start {
++            self.at += 1; // not something Debug prints: skip it so the reading goes on
++        }
++        self.chars[start..self.at].iter().collect()
++    }
++
++    fn named(&mut self) -> J {
++        let name = self.name();
++        match name.as_str() {
++            "true" => return J::Bool(true),
++            "false" => return J::Bool(false),
++            "None" => return J::Null,
++            "NaN" => return J::Num(f64::NAN),
++            "inf" => return J::Num(f64::INFINITY),
++            _ => {}
++        }
++        self.skip_space();
++        match self.peek() {
++            Some('(') => {
++                self.at += 1;
++                let mut items = self.items(')');
++                if name == "Some" && items.len() == 1 {
++                    return items.remove(0);
++                }
++                J::Obj(vec![("t".into(), J::Str(name)), ("a".into(), J::Arr(items))])
++            }
++            Some('{') => {
++                self.at += 1;
++                let mut fields = Vec::new();
++                loop {
++                    if self.eat('}') || self.peek().is_none() {
++                        break;
++                    }
++                    self.skip_space();
++                    let key = self.name();
++                    self.eat(':');
++                    let value = self.value();
++                    fields.push((key, value));
++                    self.eat(',');
++                }
++                if name == "Span" {
++                    return self.span(&fields);
++                }
++                J::Obj(vec![("t".into(), J::Str(name)), ("f".into(), J::Obj(fields))])
++            }
++            _ => J::Obj(vec![("t".into(), J::Str(name))]),
++        }
++    }
++
++    /// `Span { start: ByteIndex(4), end: ByteIndex(5), … }` as `{start, end}` in UTF-16 units.
++    fn span(&self, fields: &[(String, J)]) -> J {
++        let byte = |key: &str| -> usize {
++            let found = fields.iter().find(|(k, _)| k == key).map(|(_, v)| v);
++            // ByteIndex(n) is read as a tuple variant with one number
++            let raw = match found {
++                Some(J::Obj(o)) => o.iter().find(|(k, _)| k == "a").and_then(|(_, a)| match a {
++                    J::Arr(items) => items.first().cloned(),
++                    _ => None,
++                }),
++                Some(other) => Some(other.clone()),
++                None => None,
++            };
++            match raw {
++                Some(J::Num(n)) => n as usize,
++                _ => 0,
++            }
++        };
++        let to_units = |b: usize| self.units.get(b.min(self.units.len() - 1)).copied().unwrap_or(0);
++        J::obj(vec![("start", J::n(to_units(byte("start")))), ("end", J::n(to_units(byte("end"))))])
++    }
++}
+diff --git a/numbat-wasm/src/schema.rs b/numbat-wasm/src/schema.rs
+new file mode 100644
+index 00000000..41ab897c
+--- /dev/null
++++ b/numbat-wasm/src/schema.rs
+@@ -0,0 +1,37 @@
++//! The schema: what the runtime says about its own language, so nothing is copied into the app.
++
++use numbat::tokenizer::keyword_table;
++use wasm_bindgen::prelude::*;
++
++use crate::json::J;
++
++/// The version of this module's answers; the app checks it against the one it was written for.
++pub const SCHEMA_VERSION: u32 = 1;
++
++/// `{"version", "prefixes":[{long, short, binary, exponent},…], "keywords":[[word, tokenKind],…]}`.
++#[wasm_bindgen]
++pub fn schema() -> String {
++    let mut keywords: Vec<(&str, String)> =
++        keyword_table().iter().map(|(word, kind)| (*word, format!("{kind:?}"))).collect();
++    keywords.sort();
++    let prefixes = numbat::tables::prefix_table()
++        .into_iter()
++        .map(|p| {
++            J::obj(vec![
++                ("long", J::s(p.long)),
++                ("short", J::Arr(p.short.iter().map(|s| J::s(*s)).collect())),
++                ("binary", J::Bool(p.binary)),
++                ("exponent", J::Num(p.exponent as f64)),
++            ])
++        })
++        .collect();
++    J::obj(vec![
++        ("version", J::n(SCHEMA_VERSION as usize)),
++        ("prefixes", J::Arr(prefixes)),
++        (
++            "keywords",
++            J::Arr(keywords.into_iter().map(|(w, k)| J::Arr(vec![J::s(w), J::s(k)])).collect()),
++        ),
++    ])
++    .dump()
++}
+diff --git a/numbat-wasm/src/tables.rs b/numbat-wasm/src/tables.rs
+new file mode 100644
+index 00000000..81bf28f0
+--- /dev/null
++++ b/numbat-wasm/src/tables.rs
+@@ -0,0 +1,158 @@
++//! The tables of names, as data.
++//!
++//! `Numbat.symbols()` is every name the environment holds in one answer (what it is, its type, where it was defined, what a unit
++//! name accepts for a prefix), and `Numbat.symbol(name)` is one name in full (its name, description, url, aliases, examples; a
++//! function's signature; what a unit is a multiple of; what a dimension is made of). See `numbat/src/tables.rs`.
++
++use numbat::tables::{Symbol, SymbolDetail, SymbolKind, SymbolScope};
++use wasm_bindgen::prelude::*;
++
++use crate::eval::source_json;
++use crate::json::J;
++use crate::types::scheme_json;
++use crate::Numbat;
++
++fn kind_name(kind: SymbolKind) -> &'static str {
++    match kind {
++        SymbolKind::Variable => "variable",
++        SymbolKind::Function => "function",
++        SymbolKind::Unit => "unit",
++        SymbolKind::Dimension => "dimension",
++        SymbolKind::Struct => "struct",
++        SymbolKind::Predefined => "predefined",
++    }
++}
++
++fn symbol_fields(numbat: &Numbat, s: &Symbol) -> Vec<(&'static str, J)> {
++    let registry = numbat.ctx.dimension_registry();
++    let mut fields = vec![
++        ("name", J::s(s.name.as_str())),
++        ("kind", J::s(kind_name(s.kind))),
++        ("type", J::opt(s.scheme.as_ref().map(|t| scheme_json(t, registry)))),
++    ];
++    if let Some(def) = &s.definition {
++        fields.push(("source", source_json(&numbat.ctx.code_source(def.code_source_id))));
++    }
++    if let Some(u) = &s.unit {
++        fields.push((
++            "unit",
++            J::obj(vec![
++                ("canonical", J::s(u.canonical.as_str())),
++                ("longPrefixes", J::Bool(u.long_prefixes)),
++                ("shortPrefixes", J::Bool(u.short_prefixes)),
++                ("metric", J::Bool(u.metric)),
++                ("binary", J::Bool(u.binary)),
++            ]),
++        ));
++    }
++    fields
++}
++
++fn detail_json(numbat: &Numbat, d: &SymbolDetail) -> J {
++    let mut fields = symbol_fields(numbat, &d.symbol);
++    if let Some(def) = &d.symbol.definition {
++        // (the span is in the source it names; the app reads it with the source)
++        fields.push(("definition", J::obj(vec![("start", J::n(def.start.as_usize())), ("end", J::n(def.end.as_usize()))])));
++    }
++    fields.push(("displayName", J::opt(d.display_name.as_ref().map(|s| J::s(s.as_str())))));
++    fields.push(("description", J::opt(d.description.as_ref().map(|s| J::s(s.as_str())))));
++    fields.push(("url", J::opt(d.url.as_ref().map(|s| J::s(s.as_str())))));
++    fields.push(("aliases", J::Arr(d.aliases.iter().map(|a| J::s(a.as_str())).collect())));
++    fields.push((
++        "examples",
++        J::Arr(
++            d.examples
++                .iter()
++                .map(|(code, note)| {
++                    J::obj(vec![("code", J::s(code.as_str())), ("note", J::opt(note.as_ref().map(|n| J::s(n.as_str()))))])
++                })
++                .collect(),
++        ),
++    ));
++    if let Some(f) = &d.function {
++        fields.push((
++            "function",
++            J::obj(vec![
++                (
++                    "typeParameters",
++                    J::Arr(
++                        f.type_parameters
++                            .iter()
++                            .map(|(n, bound)| J::obj(vec![("name", J::s(n.as_str())), ("dimensionBound", J::Bool(*bound))]))
++                            .collect(),
++                    ),
++                ),
++                (
++                    "parameters",
++                    J::Arr(
++                        f.parameters
++                            .iter()
++                            .map(|p| {
++                                J::obj(vec![
++                                    ("name", J::s(p.name.as_str())),
++                                    ("annotation", J::opt(p.annotation.as_ref().map(J::s))),
++                                    ("readable", J::s(p.readable.as_str())),
++                                ])
++                            })
++                            .collect(),
++                    ),
++                ),
++                ("returnsAnnotation", J::opt(f.returns_annotation.as_ref().map(J::s))),
++                ("returnsReadable", J::s(f.returns_readable.as_str())),
++            ]),
++        ));
++    }
++    if let Some(u) = &d.unit {
++        fields.push((
++            "unitDetail",
++            J::obj(vec![
++                ("canonical", J::s(u.canonical.as_str())),
++                ("dimension", J::s(u.dimension.as_str())),
++                ("dimensionless", J::Bool(u.dimensionless)),
++                (
++                    "prefix",
++                    J::opt(u.prefix.as_ref().map(|(factor, of)| {
++                        J::obj(vec![("factor", J::Num(*factor)), ("of", J::s(of.as_str()))])
++                    })),
++                ),
++                (
++                    "definedBy",
++                    J::opt(u.defined_by.as_ref().map(|(factor, unit)| {
++                        J::obj(vec![("factor", J::Num(*factor)), ("unit", J::s(unit.as_str()))])
++                    })),
++                ),
++                ("isBase", J::Bool(u.is_base)),
++            ]),
++        ));
++    }
++    if let Some(dim) = &d.dimension {
++        fields.push((
++            "dimensionDetail",
++            J::obj(vec![
++                ("isBase", J::Bool(dim.is_base)),
++                ("definition", J::opt(dim.definition.as_ref().map(J::s))),
++                ("equivalents", J::Arr(dim.equivalents.iter().map(|e| J::s(e.as_str())).collect())),
++                ("units", J::Arr(dim.units.iter().map(|u| J::s(u.as_str())).collect())),
++            ]),
++        ));
++    }
++    J::obj(fields)
++}
++
++#[wasm_bindgen]
++impl Numbat {
++    /// Every name of one scope, as a JSON array: `document` (what the sheet's lines define, and every dimension) or `library`
++    /// (the language's names and those of the modules imported).
++    pub fn symbols(&self, scope: &str) -> String {
++        let scope = if scope == "document" { SymbolScope::Document } else { SymbolScope::Library };
++        J::Arr(self.ctx.symbols(scope).iter().map(|s| J::obj(symbol_fields(self, s))).collect()).dump()
++    }
++
++    /// One name in full, as JSON, or `null`.
++    pub fn symbol(&self, name: &str) -> String {
++        match self.ctx.symbol_detail(name) {
++            Some(d) => detail_json(self, &d).dump(),
++            None => "null".to_string(),
++        }
++    }
++}
+diff --git a/numbat-wasm/src/types.rs b/numbat-wasm/src/types.rs
+new file mode 100644
+index 00000000..008cedd0
+--- /dev/null
++++ b/numbat-wasm/src/types.rs
+@@ -0,0 +1,122 @@
++//! Types as data: what the typechecker says a thing is.
++//!
++//! `{"t":"dimension","factors":[{"name":"Length","exp":1}],"text":"Length"}`, `bool`, `string`, `datetime`, `fn`
++//! (`params`, `ret`), `struct` (`name`, `args`, `fields`), `list` (`elem`), `var` (an unsolved or quantified type variable) and
++//! `forall` (`inner`, `bounds`): every form of Numbat's `Type`, with the readable text beside it (`Length / Time`).
++
++use numbat::markup::{Formatter, PlainTextFormatter};
++use numbat::{Bound, DType, DTypeFactor, QualifiedType, StructInfo, StructKind, Type, TypeScheme, TypeVariable};
++
++use crate::json::J;
++
++fn plain(markup: &numbat::markup::Markup) -> String {
++    PlainTextFormatter {}.format(markup, false).to_string()
++}
++
++fn exponent(numer: i128, denom: i128) -> J {
++    if denom == 1 { J::Num(numer as f64) } else { J::Num(numer as f64 / denom as f64) }
++}
++
++fn variable(v: &TypeVariable) -> J {
++    match v {
++        TypeVariable::Named(name) => J::obj(vec![("t", J::s("var")), ("name", J::s(name.as_str()))]),
++        TypeVariable::Quantified(i) => J::obj(vec![("t", J::s("var")), ("index", J::n(*i))]),
++    }
++}
++
++fn dimension(d: &DType, text: String) -> J {
++    let factors = d
++        .factors()
++        .iter()
++        .map(|(factor, exp)| {
++            let (kind, name) = match factor {
++                DTypeFactor::TVar(TypeVariable::Named(name)) => ("var", name.to_string()),
++                DTypeFactor::TVar(TypeVariable::Quantified(i)) => ("var", format!("#{i}")),
++                DTypeFactor::TPar(name) => ("parameter", name.to_string()),
++                DTypeFactor::BaseDimension(name) => ("base", name.to_string()),
++            };
++            J::obj(vec![
++                ("kind", J::s(kind)),
++                ("name", J::s(name)),
++                ("exp", exponent(*exp.numer(), *exp.denom())),
++            ])
++        })
++        .collect();
++    J::obj(vec![("t", J::s("dimension")), ("factors", J::Arr(factors)), ("text", J::s(text))])
++}
++
++fn struct_json(info: &StructInfo, registry: &numbat::dimension::DimensionRegistry) -> J {
++    let args = match &info.kind {
++        StructKind::Instance(args) => args.iter().map(|a| type_json(a, registry)).collect(),
++        StructKind::Definition(_) => Vec::new(),
++    };
++    let fields = info
++        .fields
++        .iter()
++        .map(|(name, (_, ty))| J::obj(vec![("name", J::s(name.as_str())), ("type", type_json(ty, registry))]))
++        .collect();
++    J::obj(vec![
++        ("t", J::s("struct")),
++        ("name", J::s(info.name.as_str())),
++        ("args", J::Arr(args)),
++        ("fields", J::Arr(fields)),
++    ])
++}
++
++pub fn type_json(ty: &Type, registry: &numbat::dimension::DimensionRegistry) -> J {
++    match ty {
++        Type::TVar(v) => variable(v),
++        Type::TPar(name) => J::obj(vec![("t", J::s("parameter")), ("name", J::s(name.as_str()))]),
++        // (a quantified variable cannot be written by Numbat's own printer: the factors are written out instead)
++        Type::Dimension(d) if d.factors().iter().any(|(f, _)| matches!(f, DTypeFactor::TVar(TypeVariable::Quantified(_)))) => {
++            let text = d
++                .factors()
++                .iter()
++                .map(|(factor, exp)| {
++                    let name = match factor {
++                        DTypeFactor::TVar(TypeVariable::Quantified(i)) => format!("T{i}"),
++                        other => other.name().to_string(),
++                    };
++                    if *exp.numer() == 1 && *exp.denom() == 1 { name } else { format!("{name}^{exp}") }
++                })
++                .collect::<Vec<_>>()
++                .join(" × ");
++            dimension(d, text)
++        }
++        Type::Dimension(d) => dimension(d, plain(&ty.to_readable_type(registry))),
++        Type::Boolean => J::obj(vec![("t", J::s("bool"))]),
++        Type::String => J::obj(vec![("t", J::s("string"))]),
++        Type::DateTime => J::obj(vec![("t", J::s("datetime"))]),
++        Type::Fn(params, ret) => J::obj(vec![
++            ("t", J::s("fn")),
++            ("params", J::Arr(params.iter().map(|p| type_json(p, registry)).collect())),
++            ("ret", type_json(ret, registry)),
++        ]),
++        Type::Struct(info) => struct_json(info, registry),
++        Type::List(elem) => J::obj(vec![("t", J::s("list")), ("elem", type_json(elem, registry))]),
++    }
++}
++
++pub fn scheme_json(scheme: &TypeScheme, registry: &numbat::dimension::DimensionRegistry) -> J {
++    match scheme {
++        TypeScheme::Concrete(ty) => type_json(ty, registry),
++        // nothing quantified and nothing bounded is the type itself
++        TypeScheme::Quantified(0, QualifiedType { inner, bounds }) if bounds.is_empty() => type_json(inner, registry),
++        TypeScheme::Quantified(count, QualifiedType { inner, bounds }) => J::obj(vec![
++            ("t", J::s("forall")),
++            ("count", J::n(*count)),
++            ("inner", type_json(inner, registry)),
++            (
++                "bounds",
++                J::Arr(
++                    bounds
++                        .iter()
++                        .map(|b| match b {
++                            Bound::IsDim(ty) => type_json(ty, registry),
++                        })
++                        .collect(),
++                ),
++            ),
++        ]),
++    }
++}
+diff --git a/numbat-wasm/src/values.rs b/numbat-wasm/src/values.rs
+new file mode 100644
+index 00000000..18722d31
+--- /dev/null
++++ b/numbat-wasm/src/values.rs
+@@ -0,0 +1,72 @@
++//! Values as data: what an evaluation gave.
++//!
++//! `{"t":"quantity","number":3,"unit":"m","text":"3 m"}` (a conversion asked for as a multiple of a unit, `6 hours -> 45 min`, adds
++//! `target`), `bool`, `string`, `datetime`, `function`, `format`, `struct` (`name`, `fields`) and `list` (`items`); every one has
++//! the `text` it is printed as, to twelve significant digits.
++
++use numbat::markup::{Formatter, PlainTextFormatter};
++use numbat::value::Value;
++use numbat::FormatOptions;
++
++use crate::json::J;
++
++pub fn options() -> FormatOptions {
++    FormatOptions { significant_digits: 12, ..FormatOptions::default() }
++}
++
++fn plain(markup: &numbat::markup::Markup) -> String {
++    PlainTextFormatter {}.format(markup, false).to_string()
++}
++
++pub fn value_json(value: &Value) -> J {
++    let text = J::s(plain(&value.pretty_print_with(&options())));
++    match value {
++        Value::Quantity(q) => {
++            let mut fields = vec![
++                ("t", J::s("quantity")),
++                ("number", J::Num(q.unsafe_value().to_f64())),
++                ("unit", J::s(q.unit().to_string())),
++            ];
++            if let Some(target) = q.conversion_target() {
++                // shown as `coefficient × target`: the number is the coefficient, the unit is the target's
++                let coefficient = q.unsafe_value().to_f64() / target.unsafe_value().to_f64();
++                fields[1] = ("number", J::Num(coefficient));
++                fields[2] = ("unit", J::s(target.unit().to_string()));
++                fields.push((
++                    "target",
++                    J::obj(vec![
++                        ("number", J::Num(target.unsafe_value().to_f64())),
++                        ("unit", J::s(target.unit().to_string())),
++                    ]),
++                ));
++            }
++            fields.push(("text", text));
++            J::obj(fields)
++        }
++        Value::Boolean(b) => J::obj(vec![("t", J::s("bool")), ("value", J::Bool(*b)), ("text", text)]),
++        Value::String(s) => J::obj(vec![("t", J::s("string")), ("value", J::s(s.as_str())), ("text", text)]),
++        Value::DateTime(_) => J::obj(vec![("t", J::s("datetime")), ("text", text)]),
++        Value::FunctionReference(_) => J::obj(vec![("t", J::s("function")), ("text", text)]),
++        Value::FormatSpecifiers(_) => J::obj(vec![("t", J::s("format")), ("text", text)]),
++        Value::StructInstance(info, values) => J::obj(vec![
++            ("t", J::s("struct")),
++            ("name", J::s(info.name.as_str())),
++            (
++                "fields",
++                J::Arr(
++                    info.fields
++                        .keys()
++                        .zip(values.iter())
++                        .map(|(name, v)| J::obj(vec![("name", J::s(name.as_str())), ("value", value_json(v))]))
++                        .collect(),
++                ),
++            ),
++            ("text", text),
++        ]),
++        Value::List(list) => J::obj(vec![
++            ("t", J::s("list")),
++            ("items", J::Arr(list.iter().map(value_json).collect())),
++            ("text", text),
++        ]),
++    }
++}
+diff --git a/numbat/src/dimension.rs b/numbat/src/dimension.rs
+index 709c0902..2591d27c 100644
+--- a/numbat/src/dimension.rs
++++ b/numbat/src/dimension.rs
+@@ -113,6 +113,11 @@ impl DimensionRegistry {
+             .unwrap())
+     }
+ 
++    /// Every dimension name, base ones first.
++    pub fn names(&self) -> Vec<CompactString> {
++        self.registry.iter_base_entries().chain(self.registry.iter_derived_entries()).collect()
++    }
++
+     pub fn contains(&self, dimension_name: &str) -> bool {
+         self.registry.contains(dimension_name)
+     }
+diff --git a/numbat/src/facts.rs b/numbat/src/facts.rs
+new file mode 100644
+index 00000000..cddc3e7c
+--- /dev/null
++++ b/numbat/src/facts.rs
+@@ -0,0 +1,119 @@
++//! UnitPad patch: facts the real phases state as they work, so the app reads what the runtime did instead of guessing it again.
++//!
++//! The typechecker records every name it resolves (what it is, and where it was defined), and the functions that read the clock or
++//! the exchange rates note it, so a line's result can say what it depends on from outside. Nothing here changes what is computed.
++
++use std::sync::atomic::{AtomicBool, Ordering};
++
++use compact_str::CompactString;
++
++use crate::{prefix::Prefix, span::Span};
++
++/// What a name turned out to be where it was used.
++#[derive(Debug, Clone)]
++pub enum UseKind {
++    Variable,
++    Function,
++    /// A unit, with the prefix it was written with and its full name.
++    Unit {
++        prefix: Option<Prefix>,
++        canonical: CompactString,
++    },
++    /// `ans` and `_`, which the language defines.
++    Predefined,
++    /// A name in a type: a dimension.
++    Dimension,
++    /// A name in a type: a struct.
++    Struct,
++    /// Nothing defines it.
++    Unknown,
++}
++
++/// One name where it is used: the span of the use, the name as written, what it is, and the span of its definition if it has one
++/// (the span names its source, so it says whether it is the document, a module or the library).
++#[derive(Debug, Clone)]
++pub struct Use {
++    pub span: Span,
++    pub name: CompactString,
++    pub kind: UseKind,
++    pub definition: Option<Span>,
++}
++
++thread_local! {
++    /// The names resolved since they were last taken. Kept here and not in the typechecker, which is put back to what it was when a
++    /// statement fails to typecheck: the names resolved on the way to the error are exactly what is wanted then.
++    static USES: std::cell::RefCell<Vec<Use>> = const { std::cell::RefCell::new(Vec::new()) };
++}
++
++pub fn record(u: Use) {
++    USES.with(|uses| uses.borrow_mut().push(u));
++}
++
++/// The names resolved since this was last called, in the order they were met, each once.
++pub fn take_uses() -> Vec<Use> {
++    let mut seen = std::collections::HashSet::new();
++    USES.with(|uses| std::mem::take(&mut *uses.borrow_mut()))
++        .into_iter()
++        .filter(|u| seen.insert((u.span.start, u.span.end, u.span.code_source_id, u.name.clone())))
++        .collect()
++}
++
++/// The unit just resolved was written with a prefix: say so, and what it is called in full.
++pub fn amend_last_unit(prefix: Prefix, full_name: &str) {
++    USES.with(|uses| {
++        if let Some(last) = uses.borrow_mut().last_mut()
++            && let UseKind::Unit { prefix: p, canonical } = &mut last.kind
++        {
++            *p = if prefix == Prefix::none() { None } else { Some(prefix) };
++            *canonical = full_name.into();
++        }
++    });
++}
++
++/// A typed hole (`?`) the typechecker found, with the type it expects there and the names Numbat itself finds relevant.
++#[derive(Debug, Clone)]
++pub struct Hole {
++    pub span: Span,
++    pub scheme: crate::TypeScheme,
++    pub matches: Vec<String>,
++}
++
++thread_local! {
++    static HOLE: std::cell::RefCell<Option<Hole>> = const { std::cell::RefCell::new(None) };
++}
++
++pub fn record_hole(hole: Hole) {
++    HOLE.with(|h| *h.borrow_mut() = Some(hole));
++}
++
++/// The typed hole found since this was last called.
++pub fn take_hole() -> Option<Hole> {
++    HOLE.with(|h| h.borrow_mut().take())
++}
++
++static CLOCK: AtomicBool = AtomicBool::new(false);
++static EXCHANGE_RATES: AtomicBool = AtomicBool::new(false);
++
++/// Called by what reads the clock.
++pub fn note_clock() {
++    CLOCK.store(true, Ordering::Relaxed);
++}
++
++/// Called by what reads the exchange rates.
++pub fn note_exchange_rates() {
++    EXCHANGE_RATES.store(true, Ordering::Relaxed);
++}
++
++/// What was read from outside since this was last called.
++#[derive(Debug, Clone, Copy, Default)]
++pub struct Effects {
++    pub clock: bool,
++    pub exchange_rates: bool,
++}
++
++pub fn take_effects() -> Effects {
++    Effects {
++        clock: CLOCK.swap(false, Ordering::Relaxed),
++        exchange_rates: EXCHANGE_RATES.swap(false, Ordering::Relaxed),
++    }
++}
+diff --git a/numbat/src/ffi/currency.rs b/numbat/src/ffi/currency.rs
+index e446bd10..d9bb043c 100644
+--- a/numbat/src/ffi/currency.rs
++++ b/numbat/src/ffi/currency.rs
+@@ -14,6 +14,7 @@ pub fn exchange_rate(
+     _return_type: &TypeScheme,
+ ) -> Result<Value, Box<RuntimeErrorKind>> {
+     let rate = string_arg!(args);
++    crate::facts::note_exchange_rates();
+ 
+     let exchange_rates = ExchangeRatesCache::new();
+ 
+diff --git a/numbat/src/ffi/datetime.rs b/numbat/src/ffi/datetime.rs
+index a83fb623..5e081724 100644
+--- a/numbat/src/ffi/datetime.rs
++++ b/numbat/src/ffi/datetime.rs
+@@ -22,6 +22,7 @@ pub fn now(
+     _args: Args,
+     _return_type: &TypeScheme,
+ ) -> Result<Value, Box<RuntimeErrorKind>> {
++    crate::facts::note_clock();
+     return_datetime!(Zoned::now())
+ }
+ 
+diff --git a/numbat/src/lib.rs b/numbat/src/lib.rs
+index 282b0bf8..0ddab19f 100644
+--- a/numbat/src/lib.rs
++++ b/numbat/src/lib.rs
+@@ -1,5 +1,5 @@
+ mod arithmetic;
+-mod ast;
++pub mod ast;
+ #[cfg(feature = "html-formatter")]
+ pub mod buffered_writer;
+ mod bytecode_interpreter;
+@@ -7,9 +7,11 @@ mod column_formatter;
+ pub mod command;
+ mod currency;
+ pub mod datetime;
+-mod decorator;
++pub mod decorator;
+ pub mod diagnostic;
+-mod dimension;
++pub mod facts;
++pub mod tables;
++pub mod dimension;
+ mod ffi;
+ mod gamma;
+ pub mod help;
+@@ -24,10 +26,10 @@ pub mod module_importer;
+ mod name_resolution;
+ mod number;
+ mod parse_quantity;
+-mod parser;
++pub mod parser;
+ #[cfg(feature = "plotting")]
+ mod plot;
+-mod prefix;
++pub mod prefix;
+ mod prefix_parser;
+ mod prefix_transformer;
+ pub mod pretty_print;
+@@ -36,9 +38,9 @@ mod quantity;
+ mod registry;
+ pub mod resolver;
+ pub mod session_history;
+-mod span;
++pub mod span;
+ mod suggestion;
+-mod tokenizer;
++pub mod tokenizer;
+ mod traversal;
+ mod type_variable;
+ mod typechecker;
+@@ -85,7 +87,11 @@ pub use registry::BaseRepresentation;
+ pub use registry::BaseRepresentationFactor;
+ pub use typechecker::TypeCheckError;
+ pub use typed_ast::Statement;
++pub use type_variable::TypeVariable;
++pub use typechecker::qualified_type::{Bound, QualifiedType};
++pub use typechecker::type_scheme::TypeScheme;
+ pub use typed_ast::Type;
++pub use typed_ast::{DType, DTypeFactor, StructInfo, StructKind};
+ use unit::BaseUnitAndFactor;
+ use unit_registry::UnitMetadata;
+ 
+@@ -857,6 +863,21 @@ impl Context {
+         }
+     }
+ 
++    /// The names the typechecker resolved since this was last called (UnitPad patch: `facts.rs`).
++    pub fn take_uses(&mut self) -> Vec<facts::Use> {
++        facts::take_uses()
++    }
++
++    /// The source a span or a diagnostic's file id belongs to, as the resolver knows it.
++    pub fn code_source(&self, id: usize) -> resolver::CodeSource {
++        self.resolver.get_code_source(id)
++    }
++
++    /// The text of a source, by the id spans and diagnostics carry.
++    pub fn source_text(&self, id: usize) -> Option<String> {
++        self.resolver.files.get(id).ok().map(|file| file.source().clone())
++    }
++
+     pub fn set_terminal_width(&mut self, width: Option<usize>) {
+         self.terminal_width = width;
+     }
+diff --git a/numbat/src/prefix_parser.rs b/numbat/src/prefix_parser.rs
+index 1b1cf745..ab91ccec 100644
+--- a/numbat/src/prefix_parser.rs
++++ b/numbat/src/prefix_parser.rs
+@@ -73,12 +73,12 @@ impl AliasSpanInfo {
+ }
+ 
+ #[derive(Debug, Clone)]
+-struct UnitInfo {
+-    definition_span: Span,
+-    accepts_prefix: AcceptsPrefix,
+-    metric_prefixes: bool,
+-    binary_prefixes: bool,
+-    full_name: CompactString,
++pub(crate) struct UnitInfo {
++    pub(crate) definition_span: Span,
++    pub(crate) accepts_prefix: AcceptsPrefix,
++    pub(crate) metric_prefixes: bool,
++    pub(crate) binary_prefixes: bool,
++    pub(crate) full_name: CompactString,
+ }
+ 
+ #[derive(Debug, Clone)]
+@@ -99,7 +99,7 @@ impl PrefixParser {
+         }
+     }
+ 
+-    fn prefixes() -> &'static [(&'static str, &'static [&'static str], Prefix)] {
++    pub(crate) fn prefixes() -> &'static [(&'static str, &'static [&'static str], Prefix)] {
+         PREFIXES.get_or_init(|| {
+             vec![
+                 // Metric prefixes:
+@@ -263,6 +263,11 @@ impl PrefixParser {
+         Ok(())
+     }
+ 
++    /// Every unit name the parser knows (each alias), with what it accepts.
++    pub(crate) fn unit_infos(&self) -> impl Iterator<Item = (&CompactString, &UnitInfo)> {
++        self.units.iter()
++    }
++
+     pub fn parse<'a>(&self, input: &'a str) -> PrefixParserResult<'a> {
+         // Check if this is a shadowing identifier first (e.g., a function parameter
+         // or local variable). This allows parameters like `h` to shadow unit names.
+diff --git a/numbat/src/quantity.rs b/numbat/src/quantity.rs
+index ac35bb38..d5a2b9bc 100644
+--- a/numbat/src/quantity.rs
++++ b/numbat/src/quantity.rs
+@@ -73,6 +73,11 @@ impl Quantity {
+         Quantity::new_f64(1.0, unit)
+     }
+ 
++    /// The unit a conversion asked for (`6 hours -> 45 min`), which the result is shown as a multiple of.
++    pub fn conversion_target(&self) -> Option<&Quantity> {
++        self.conversion_target.as_deref()
++    }
++
+     pub fn unit(&self) -> &Unit {
+         &self.unit
+     }
+diff --git a/numbat/src/resolver.rs b/numbat/src/resolver.rs
+index 788e98c8..a338f6ee 100644
+--- a/numbat/src/resolver.rs
++++ b/numbat/src/resolver.rs
+@@ -57,6 +57,25 @@ pub struct Resolver {
+     codesources: HashMap<usize, CodeSource>,
+ }
+ 
++/// The text of a module, kept for the life of the process, once for each distinct text (UnitPad patch).
++///
++/// The parsed program borrows its source (`Statement<'a>`), and the resolver hands programs back, so the source of an imported
++/// module has to outlive the resolver: upstream leaks a fresh copy of it each time a module is imported, and every `Context` that
++/// loads the prelude imports all of it, so each one left the whole library's text (about 93 KB) behind when dropped. Modules come
++/// from a fixed set, so a copy kept for each distinct text is bounded by the size of the library, however many contexts there are.
++fn leak_once(code: &str) -> &'static str {
++    use std::collections::HashSet;
++    use std::sync::{Mutex, OnceLock};
++    static KEPT: OnceLock<Mutex<HashSet<&'static str>>> = OnceLock::new();
++    let mut kept = KEPT.get_or_init(Default::default).lock().unwrap();
++    if let Some(found) = kept.get(code) {
++        return found;
++    }
++    let leaked: &'static str = Box::leak(code.to_string().into_boxed_str());
++    kept.insert(leaked);
++    leaked
++}
++
+ impl Resolver {
+     pub(crate) fn new(importer: impl ModuleImporter + 'static) -> Self {
+         Self {
+@@ -114,7 +133,7 @@ impl Resolver {
+                         let module_path =
+                             ModulePath(module_path.iter().map(|s| s.to_compact_string()).collect());
+                         if let Some((code, filesystem_path)) = self.importer.import(&module_path) {
+-                            let code: &'static str = Box::leak(code.to_string().into_boxed_str());
++                            let code: &'static str = leak_once(&code);
+                             self.imported_modules.push(module_path.clone());
+                             let code_source_id = self.add_code_source(
+                                 CodeSource::Module(module_path, filesystem_path),
+diff --git a/numbat/src/tables.rs b/numbat/src/tables.rs
+new file mode 100644
+index 00000000..240bf6fb
+--- /dev/null
++++ b/numbat/src/tables.rs
+@@ -0,0 +1,380 @@
++//! UnitPad patch: the runtime's tables of names, readable.
++//!
++//! What is defined (variables, functions, units, dimensions), what each is (its type), where it was defined, and for the ones
++//! that carry it, what they say about themselves (name, description, url, aliases, examples; a function's signature; what a unit
++//! is a multiple of; what a dimension is made of). All of it is read from the tables the interpreter itself uses, none of it from
++//! the text `print_info` writes.
++
++use compact_str::CompactString;
++
++use crate::{
++    Context, Type,
++    markup::{Formatter, Markup, PlainTextFormatter},
++    interpreter::Interpreter,
++    prefix_parser::PrefixParserResult,
++    pretty_print::PrettyPrint,
++    resolver::CodeSource,
++    span::Span,
++    typechecker::{environment::IdentifierKind, type_scheme::TypeScheme},
++    unit::BaseUnitAndFactor,
++};
++
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++pub enum SymbolKind {
++    Variable,
++    Function,
++    Unit,
++    Dimension,
++    /// A struct: its type is the struct, with its fields.
++    Struct,
++    /// `ans` and `_`, which the language defines.
++    Predefined,
++}
++
++/// What a unit name accepts: it is one alias of a unit, and the unit may take prefixes written in full (`kilometre`), short
++/// (`km`), metric and binary.
++#[derive(Debug, Clone)]
++pub struct UnitFacts {
++    pub canonical: CompactString,
++    pub long_prefixes: bool,
++    pub short_prefixes: bool,
++    pub metric: bool,
++    pub binary: bool,
++}
++
++/// One name of the tables.
++#[derive(Debug, Clone)]
++pub struct Symbol {
++    pub name: CompactString,
++    pub kind: SymbolKind,
++    pub scheme: Option<TypeScheme>,
++    pub definition: Option<Span>,
++    pub unit: Option<UnitFacts>,
++}
++
++#[derive(Debug, Clone)]
++pub struct ParameterDetail {
++    pub name: CompactString,
++    /// The type as the author wrote it, if they wrote one.
++    pub annotation: Option<String>,
++    /// The type as Numbat reads it, written out.
++    pub readable: String,
++}
++
++#[derive(Debug, Clone)]
++pub struct FunctionDetail {
++    /// Type parameters, and whether each is bound to be a dimension (`<D: Dim>`).
++    pub type_parameters: Vec<(CompactString, bool)>,
++    pub parameters: Vec<ParameterDetail>,
++    pub returns_annotation: Option<String>,
++    pub returns_readable: String,
++}
++
++#[derive(Debug, Clone)]
++pub struct UnitDetail {
++    /// The unit's full name (the one its aliases stand for).
++    pub canonical: CompactString,
++    /// The dimension of the unit, as Numbat writes it (`Length`).
++    pub dimension: String,
++    pub dimensionless: bool,
++    /// What a prefixed name is: the prefix's factor and the unit it is a prefix of.
++    pub prefix: Option<(f64, CompactString)>,
++    /// What one of the unit is, in the unit it is defined by (`1 kilometre = 1000 metre`), if it is defined by one.
++    pub defined_by: Option<(f64, String)>,
++    pub is_base: bool,
++}
++
++#[derive(Debug, Clone)]
++pub struct DimensionDetail {
++    pub is_base: bool,
++    /// What it is made of, when it is not a base dimension.
++    pub definition: Option<String>,
++    /// The other names for the same dimension.
++    pub equivalents: Vec<CompactString>,
++    /// The units of the dimension, by their first alias.
++    pub units: Vec<CompactString>,
++}
++
++/// One name, in full.
++#[derive(Debug, Clone)]
++pub struct SymbolDetail {
++    pub symbol: Symbol,
++    pub display_name: Option<CompactString>,
++    pub description: Option<CompactString>,
++    pub url: Option<CompactString>,
++    pub aliases: Vec<CompactString>,
++    pub examples: Vec<(CompactString, Option<CompactString>)>,
++    pub source: Option<CodeSource>,
++    pub function: Option<FunctionDetail>,
++    pub unit: Option<UnitDetail>,
++    pub dimension: Option<DimensionDetail>,
++}
++
++fn plain(markup: &Markup) -> String {
++    PlainTextFormatter {}.format(markup, false).to_string()
++}
++
++/// Which names a table is of: the sheet's (defined by its lines, and every dimension: the ones a sheet declares have no source),
++/// or the rest (the library's and the imported modules'), which change only when the set of imports does.
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++pub enum SymbolScope {
++    Document,
++    Library,
++}
++
++impl Context {
++    fn is_document(&self, definition: Option<Span>) -> bool {
++        match definition.map(|span| self.resolver.get_code_source(span.code_source_id)) {
++            Some(CodeSource::Text) => true,
++            Some(CodeSource::File(path)) => path.to_string_lossy().starts_with("line:"),
++            _ => false,
++        }
++    }
++
++    /// Every name of one scope: what is defined, what each is, where it was defined.
++    pub fn symbols(&self, scope: SymbolScope) -> Vec<Symbol> {
++        let mut out: Vec<Symbol> = Vec::new();
++        let units: std::collections::HashMap<&CompactString, _> =
++            self.prefix_transformer.prefix_parser.unit_infos().collect();
++        for (name, kind) in self.typechecker.entries() {
++            let (symbol_kind, scheme, definition) = match kind {
++                IdentifierKind::Normal(scheme, span, true) => (SymbolKind::Unit, scheme, Some(*span)),
++                IdentifierKind::Normal(scheme, span, false) => (SymbolKind::Variable, scheme, Some(*span)),
++                IdentifierKind::Function(signature, _) => {
++                    (SymbolKind::Function, &signature.fn_type, Some(signature.definition_span))
++                }
++                IdentifierKind::Predefined(scheme) => (SymbolKind::Predefined, scheme, None),
++            };
++            if (scope == SymbolScope::Document) != self.is_document(definition) {
++                continue;
++            }
++            let unit = units.get(name).map(|info| UnitFacts {
++                canonical: info.full_name.clone(),
++                long_prefixes: info.accepts_prefix.long,
++                short_prefixes: info.accepts_prefix.short,
++                metric: info.metric_prefixes,
++                binary: info.binary_prefixes,
++            });
++            out.push(Symbol {
++                name: name.clone(),
++                kind: symbol_kind,
++                scheme: Some(scheme.clone()),
++                definition,
++                unit,
++            });
++        }
++        for info in self.typechecker.struct_infos() {
++            let definition = Some(info.definition_span);
++            if (scope == SymbolScope::Document) != self.is_document(definition) {
++                continue;
++            }
++            out.push(Symbol {
++                name: info.name.clone(),
++                kind: SymbolKind::Struct,
++                scheme: Some(TypeScheme::concrete(Type::Struct(Box::new(info.clone())))),
++                definition,
++                unit: None,
++            });
++        }
++        if scope == SymbolScope::Document {
++            for name in self.dimension_registry().names() {
++                out.push(Symbol { name, kind: SymbolKind::Dimension, scheme: None, definition: None, unit: None });
++            }
++        }
++        out
++    }
++
++    /// One name in full, or `None` when the tables do not hold it. A unit written with a prefix (`km`) is told as the unit it
++    /// prefixes, with the prefix.
++    pub fn symbol_detail(&self, name: &str) -> Option<SymbolDetail> {
++        let registry = self.dimension_registry();
++
++        // A function.
++        if let Some((signature, metadata)) = self.typechecker.lookup_function(name) {
++            let (fn_type, type_parameters) = signature.fn_type.instantiate_for_printing(Some(
++                signature.type_parameters.iter().map(|(_, n, _)| n.as_str()),
++            ));
++            let Type::Fn(parameter_types, return_type) = &fn_type.inner else {
++                return None;
++            };
++            let parameters = signature
++                .parameters
++                .iter()
++                .zip(parameter_types)
++                .map(|((_, pname, annotation), ty)| ParameterDetail {
++                    name: pname.clone(),
++                    annotation: annotation.as_ref().map(|a| plain(&a.pretty_print())),
++                    readable: plain(&ty.to_readable_type(registry)),
++                })
++                .collect();
++            let _ = type_parameters;
++            return Some(SymbolDetail {
++                symbol: Symbol {
++                    name: name.into(),
++                    kind: SymbolKind::Function,
++                    scheme: Some(signature.fn_type.clone()),
++                    definition: Some(signature.definition_span),
++                    unit: None,
++                },
++                display_name: metadata.name.clone(),
++                description: metadata.description.clone(),
++                url: metadata.url.clone(),
++                aliases: Vec::new(),
++                examples: metadata.examples.clone(),
++                source: Some(self.resolver.get_code_source(signature.definition_span.code_source_id)),
++                function: Some(FunctionDetail {
++                    type_parameters: signature
++                        .type_parameters
++                        .iter()
++                        .map(|(_, n, bound)| (n.clone(), bound.is_some()))
++                        .collect(),
++                    parameters,
++                    returns_annotation: signature.return_type_annotation.as_ref().map(|a| plain(&a.pretty_print())),
++                    returns_readable: plain(&return_type.to_readable_type(registry)),
++                }),
++                unit: None,
++                dimension: None,
++            });
++        }
++
++        // A unit, with or without a prefix.
++        if let PrefixParserResult::UnitIdentifier(span, prefix, _written, full_name) =
++            self.prefix_transformer.prefix_parser.parse(name)
++        {
++            let reg = self.interpreter.get_unit_registry();
++            if let Ok((_, md)) = reg.inner.get_base_representation_for_name(&full_name) {
++                let defined_by = self.interpreter.get_defining_unit(&full_name).and_then(|defining| {
++                    defining
++                        .iter()
++                        .filter(|u| !u.unit_id.is_base())
++                        .map(|f| f.unit_id.unit_and_factor())
++                        .next()
++                        .map(|BaseUnitAndFactor(unit, factor)| {
++                            (
++                                factor.to_f64(),
++                                plain(&unit.pretty_print_with(|f| f.exponent, 'x', '/', true, Some(crate::markup::FormatType::Unit))),
++                            )
++                        })
++                });
++                return Some(SymbolDetail {
++                    symbol: Symbol {
++                        name: name.into(),
++                        kind: SymbolKind::Unit,
++                        scheme: self.typechecker.lookup_identifier_type(&full_name),
++                        definition: Some(span),
++                        unit: None,
++                    },
++                    display_name: md.name.clone(),
++                    description: md.description.clone(),
++                    url: md.url.clone(),
++                    aliases: md.aliases.iter().map(|(a, _)| a.clone()).collect(),
++                    examples: Vec::new(),
++                    source: Some(self.resolver.get_code_source(span.code_source_id)),
++                    function: None,
++                    unit: Some(UnitDetail {
++                        canonical: full_name.clone(),
++                        dimension: plain(&md.readable_type),
++                        dimensionless: matches!(&md.type_, Type::Dimension(d) if d.is_scalar()),
++                        prefix: if prefix == crate::prefix::Prefix::none() {
++                            None
++                        } else {
++                            Some((prefix.factor().to_f64(), full_name.clone()))
++                        },
++                        defined_by,
++                        is_base: reg.inner.is_base_unit(&full_name),
++                    }),
++                    dimension: None,
++                });
++            }
++        }
++
++        // A dimension.
++        if registry.contains(name) {
++            let base = registry.get_base_representation_for_name(name).ok();
++            let is_base = registry.is_base_dimension(name);
++            let equivalents = base
++                .as_ref()
++                .map(|b| registry.get_derived_entry_names_for(b).into_iter().filter(|n| n.as_str() != name).collect())
++                .unwrap_or_default();
++            let mut units: Vec<CompactString> = match &base {
++                Some(b) => self
++                    .unit_representations()
++                    .filter_map(|(_, (_, md))| match &md.type_ {
++                        Type::Dimension(d) if &d.to_base_representation() == b => md.aliases.first().map(|(a, _)| a.clone()),
++                        _ => None,
++                    })
++                    .collect(),
++                None => Vec::new(),
++            };
++            units.sort_by_key(|u| u.to_lowercase());
++            return Some(SymbolDetail {
++                symbol: Symbol { name: name.into(), kind: SymbolKind::Dimension, scheme: None, definition: None, unit: None },
++                display_name: None,
++                description: None,
++                url: None,
++                aliases: Vec::new(),
++                examples: Vec::new(),
++                source: None,
++                function: None,
++                unit: None,
++                dimension: Some(DimensionDetail {
++                    is_base,
++                    definition: if is_base { None } else { base.map(|b| plain(&b.pretty_print())) },
++                    equivalents,
++                    units,
++                }),
++            });
++        }
++
++        // A variable (or constant).
++        if let Some(local) = self.interpreter.lookup_global(name) {
++            let definition = match self.typechecker.entries().find(|(n, _)| n.as_str() == name) {
++                Some((_, IdentifierKind::Normal(_, span, _))) => Some(*span),
++                _ => None,
++            };
++            return Some(SymbolDetail {
++                symbol: Symbol {
++                    name: name.into(),
++                    kind: SymbolKind::Variable,
++                    scheme: self.typechecker.lookup_identifier_type(name),
++                    definition,
++                    unit: None,
++                },
++                display_name: local.metadata.name.clone(),
++                description: local.metadata.description.clone(),
++                url: local.metadata.url.clone(),
++                aliases: local.metadata.aliases.iter().cloned().collect(),
++                examples: Vec::new(),
++                source: definition.map(|s| self.resolver.get_code_source(s.code_source_id)),
++                function: None,
++                unit: None,
++                dimension: None,
++            });
++        }
++        None
++    }
++}
++
++/// A unit prefix: its name in full, the short forms, whether it is binary (else metric) and the exponent (of 10, or of 2).
++#[derive(Debug, Clone)]
++pub struct PrefixRow {
++    pub long: &'static str,
++    pub short: &'static [&'static str],
++    pub binary: bool,
++    pub exponent: i32,
++}
++
++/// The prefixes the language knows (`kilo`/`k`, `mebi`/`Mi`, …).
++pub fn prefix_table() -> Vec<PrefixRow> {
++    crate::prefix_parser::PrefixParser::prefixes()
++        .iter()
++        .map(|(long, short, prefix)| PrefixRow {
++            long,
++            short,
++            binary: matches!(prefix, crate::prefix::Prefix::Binary(_)),
++            exponent: match prefix {
++                crate::prefix::Prefix::Metric(e) | crate::prefix::Prefix::Binary(e) => *e,
++            },
++        })
++        .collect()
++}
+diff --git a/numbat/src/tokenizer.rs b/numbat/src/tokenizer.rs
+index b847211d..81cc3510 100644
+--- a/numbat/src/tokenizer.rs
++++ b/numbat/src/tokenizer.rs
+@@ -470,48 +470,7 @@ impl Tokenizer {
+             c == '0' || c == '1'
+         }
+ 
+-        static KEYWORDS: OnceLock<HashMap<&'static str, TokenKind>> = OnceLock::new();
+-        let keywords = KEYWORDS.get_or_init(|| {
+-            let mut m = HashMap::new();
+-            // keywords
+-            m.insert("per", TokenKind::Per);
+-            m.insert("to", TokenKind::To);
+-            m.insert("let", TokenKind::Let);
+-            m.insert("fn", TokenKind::Fn);
+-            m.insert("where", TokenKind::Where);
+-            m.insert("and", TokenKind::And);
+-            m.insert("dimension", TokenKind::Dimension);
+-            m.insert("unit", TokenKind::Unit);
+-            m.insert("use", TokenKind::Use);
+-            m.insert("struct", TokenKind::Struct);
+-            m.insert("long", TokenKind::Long);
+-            m.insert("short", TokenKind::Short);
+-            m.insert("both", TokenKind::Both);
+-            m.insert("none", TokenKind::None);
+-            m.insert("if", TokenKind::If);
+-            m.insert("then", TokenKind::Then);
+-            m.insert("else", TokenKind::Else);
+-            m.insert("true", TokenKind::True);
+-            m.insert("false", TokenKind::False);
+-            m.insert("NaN", TokenKind::NaN);
+-            m.insert("inf", TokenKind::Inf);
+-
+-            // procedures
+-            m.insert(ProcedureKind::Print.name(), TokenKind::ProcedurePrint);
+-            m.insert(ProcedureKind::Assert.name(), TokenKind::ProcedureAssert);
+-            m.insert(ProcedureKind::AssertEq.name(), TokenKind::ProcedureAssertEq);
+-            m.insert(ProcedureKind::Type.name(), TokenKind::ProcedureType);
+-
+-            // type names
+-            m.insert("Bool", TokenKind::Bool);
+-            m.insert("String", TokenKind::String);
+-            m.insert("DateTime", TokenKind::DateTime);
+-            m.insert("Fn", TokenKind::CapitalFn);
+-            m.insert("List", TokenKind::List);
+-
+-            // Keep this list in sync with keywords::KEYWORDS!
+-            m
+-        });
++        let keywords = keyword_table();
+ 
+         if self.peek(input) == Some('#') {
+             // skip over comment until newline
+@@ -880,6 +839,53 @@ impl Tokenizer {
+     }
+ }
+ 
++/// The words the tokenizer reads as something other than a name, with what each is (UnitPad patch: `numbat-lex`, so the app
++/// asks the tokenizer for its keywords instead of keeping a copy).
++pub fn keyword_table() -> &'static HashMap<&'static str, TokenKind> {
++    static KEYWORDS: OnceLock<HashMap<&'static str, TokenKind>> = OnceLock::new();
++    KEYWORDS.get_or_init(|| {
++            let mut m = HashMap::new();
++            // keywords
++            m.insert("per", TokenKind::Per);
++            m.insert("to", TokenKind::To);
++            m.insert("let", TokenKind::Let);
++            m.insert("fn", TokenKind::Fn);
++            m.insert("where", TokenKind::Where);
++            m.insert("and", TokenKind::And);
++            m.insert("dimension", TokenKind::Dimension);
++            m.insert("unit", TokenKind::Unit);
++            m.insert("use", TokenKind::Use);
++            m.insert("struct", TokenKind::Struct);
++            m.insert("long", TokenKind::Long);
++            m.insert("short", TokenKind::Short);
++            m.insert("both", TokenKind::Both);
++            m.insert("none", TokenKind::None);
++            m.insert("if", TokenKind::If);
++            m.insert("then", TokenKind::Then);
++            m.insert("else", TokenKind::Else);
++            m.insert("true", TokenKind::True);
++            m.insert("false", TokenKind::False);
++            m.insert("NaN", TokenKind::NaN);
++            m.insert("inf", TokenKind::Inf);
++
++            // procedures
++            m.insert(ProcedureKind::Print.name(), TokenKind::ProcedurePrint);
++            m.insert(ProcedureKind::Assert.name(), TokenKind::ProcedureAssert);
++            m.insert(ProcedureKind::AssertEq.name(), TokenKind::ProcedureAssertEq);
++            m.insert(ProcedureKind::Type.name(), TokenKind::ProcedureType);
++
++            // type names
++            m.insert("Bool", TokenKind::Bool);
++            m.insert("String", TokenKind::String);
++            m.insert("DateTime", TokenKind::DateTime);
++            m.insert("Fn", TokenKind::CapitalFn);
++            m.insert("List", TokenKind::List);
++
++            // Keep this list in sync with keywords::KEYWORDS!
++            m
++    })
++}
++
+ pub fn tokenize(input: &str, code_source_id: usize) -> Result<Vec<Token<'_>>> {
+     let mut tokenizer = Tokenizer::new(code_source_id);
+     tokenizer.scan(input)
+diff --git a/numbat/src/typechecker/environment.rs b/numbat/src/typechecker/environment.rs
+index f8272c6a..c07ab239 100644
+--- a/numbat/src/typechecker/environment.rs
++++ b/numbat/src/typechecker/environment.rs
+@@ -138,6 +138,11 @@ impl Environment {
+         self.find(v).map(|k| k.get_type())
+     }
+ 
++    /// Every name in scope, with what it is.
++    pub(crate) fn entries(&self) -> impl Iterator<Item = (&Identifier, &IdentifierKind)> {
++        self.identifiers.iter()
++    }
++
+     pub(crate) fn iter_identifiers(&self) -> impl Iterator<Item = &Identifier> {
+         self.identifiers.keys()
+     }
+@@ -154,7 +159,7 @@ impl Environment {
+             .map(|(id, kind)| (id, kind.get_type()))
+     }
+ 
+-    fn find(&self, name: &str) -> Option<&IdentifierKind> {
++    pub(crate) fn find(&self, name: &str) -> Option<&IdentifierKind> {
+         self.identifiers.get(name)
+     }
+ 
+diff --git a/numbat/src/typechecker/mod.rs b/numbat/src/typechecker/mod.rs
+index 143bd1ba..0daafb98 100644
+--- a/numbat/src/typechecker/mod.rs
++++ b/numbat/src/typechecker/mod.rs
+@@ -3,7 +3,7 @@ mod tests;
+ 
+ mod const_evaluation;
+ mod constraints;
+-mod environment;
++pub(crate) mod environment;
+ mod error;
+ mod incompatible_dimensions;
+ pub mod map_stack;
+@@ -233,6 +233,7 @@ impl TypeChecker {
+     }
+ 
+     fn type_from_annotation(&self, annotation: &TypeAnnotation) -> Result<Type> {
++        self.record_type_uses(annotation);
+         match annotation {
+             TypeAnnotation::TypeExpression(dexpr) => {
+                 if let TypeExpression::TypeIdentifier(span, name, type_args) = dexpr
+@@ -330,7 +331,78 @@ impl TypeChecker {
+         }
+     }
+ 
++    fn record_use(&self, span: Span, name: &str, kind: crate::facts::UseKind, definition: Option<Span>) {
++        crate::facts::record(crate::facts::Use {
++            span,
++            name: name.into(),
++            kind,
++            definition,
++        });
++    }
++
++    /// Say what the type annotation names (dimensions and structs), where it is written.
++    fn record_type_uses(&self, annotation: &TypeAnnotation) {
++        match annotation {
++            TypeAnnotation::TypeExpression(dexpr) => self.record_type_expression_uses(dexpr),
++            TypeAnnotation::Fn(_, params, ret) => {
++                params.iter().for_each(|p| self.record_type_uses(p));
++                self.record_type_uses(ret);
++            }
++            TypeAnnotation::List(_, element) => self.record_type_uses(element),
++            TypeAnnotation::Bool(_) | TypeAnnotation::String(_) | TypeAnnotation::DateTime(_) => {}
++        }
++    }
++
++    fn record_type_expression_uses(&self, dexpr: &TypeExpression) {
++        match dexpr {
++            TypeExpression::Unity(_) => {}
++            TypeExpression::TypeIdentifier(span, name, args) => {
++                match self.structs.get(name) {
++                    Some(info) => self.record_use(
++                        *span,
++                        name,
++                        crate::facts::UseKind::Struct,
++                        Some(info.definition_span),
++                    ),
++                    None => self.record_use(*span, name, crate::facts::UseKind::Dimension, None),
++                }
++                args.iter().for_each(|a| self.record_type_uses(a));
++            }
++            TypeExpression::Multiply(_, a, b) | TypeExpression::Divide(_, a, b) => {
++                self.record_type_expression_uses(a);
++                self.record_type_expression_uses(b);
++            }
++            TypeExpression::Power(_, base, _, _) => self.record_type_expression_uses(base),
++        }
++    }
++
+     fn identifier_type(&self, span: Span, name: &str) -> Result<TypeScheme> {
++        use crate::facts::UseKind;
++        match self.env.find(name) {
++            Some(environment::IdentifierKind::Normal(_, definition, is_unit)) => self.record_use(
++                span,
++                name,
++                if *is_unit {
++                    UseKind::Unit {
++                        prefix: None,
++                        canonical: name.into(),
++                    }
++                } else {
++                    UseKind::Variable
++                },
++                Some(*definition),
++            ),
++            Some(environment::IdentifierKind::Function(signature, _)) => self.record_use(
++                span,
++                name,
++                UseKind::Function,
++                Some(signature.definition_span),
++            ),
++            Some(environment::IdentifierKind::Predefined(_)) => {
++                self.record_use(span, name, UseKind::Predefined, None)
++            }
++            None => self.record_use(span, name, UseKind::Unknown, None),
++        }
+         Ok(self.env.get_identifier_type(name).ok_or_else(|| {
+             let suggestion = suggestion::did_you_mean(
+                 self.env
+@@ -393,6 +465,7 @@ impl TypeChecker {
+                 full_name,
+             } => {
+                 let type_scheme = self.identifier_type(*span, name)?.clone();
++                crate::facts::amend_last_unit(*prefix, full_name);
+ 
+                 let qt = type_scheme.instantiate(&mut self.name_generator);
+ 
+@@ -863,6 +936,12 @@ impl TypeChecker {
+                 if let Some((function_name, signature)) =
+                     self.env.get_proper_function_reference(callable)
+                 {
++                    self.record_use(
++                        callable.full_span(),
++                        function_name,
++                        crate::facts::UseKind::Function,
++                        Some(signature.definition_span),
++                    );
+                     proper_function_call(ProperFunctionCallArgs {
+                         registry: &mut self.registry,
+                         constraints: &mut self.constraints,
+@@ -2106,6 +2185,11 @@ impl TypeChecker {
+             let relevant_matches: Vec<String> =
+                 local_matches.chain(global_matches).take(10).collect();
+ 
++            crate::facts::record_hole(crate::facts::Hole {
++                span,
++                scheme: type_of_hole.clone(),
++                matches: relevant_matches.clone(),
++            });
+             return Err(Box::new(TypeCheckError::TypedHoleInStatement(
+                 span,
+                 type_of_hole
+@@ -2140,6 +2224,16 @@ impl TypeChecker {
+         self.env.get_function_info(name)
+     }
+ 
++    /// Every name the typechecker knows, with what it is (UnitPad patch: `tables.rs`).
++    pub(crate) fn entries(&self) -> impl Iterator<Item = (&compact_str::CompactString, &environment::IdentifierKind)> {
++        self.env.entries()
++    }
++
++    /// Every struct that is defined (UnitPad patch: `tables.rs`).
++    pub(crate) fn struct_infos(&self) -> impl Iterator<Item = &StructInfo> {
++        self.structs.values()
++    }
++
+     pub fn lookup_identifier_type(&self, name: &str) -> Option<TypeScheme> {
+         self.env.get_identifier_type(name)
+     }

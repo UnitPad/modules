@@ -1,0 +1,98 @@
+# LLM latency numbers (2026)
+# Hosted-model speeds move every few months: re-check per model on Artificial
+# Analysis, which measures output tokens/s and time to first token per API.
+# Decode is memory-bandwidth bound, so latency_llm_decode_token gives a floor
+# from first principles.
+# Import with:  use latency::llm    then use the latency_llm_* values and functions
+# title: Latency (LLM)
+# checked: unverified
+# description: Token generation and first-token latencies, GPU memory bandwidth and compute, and decode/prefill/KV-cache math (2026)
+# vendor: nvidia
+# source: https://artificialanalysis.ai/
+
+# --- Measured magnitudes (order of magnitude; varies ~3x by model and provider) ---
+# highlight: token
+@url("https://artificialanalysis.ai/")
+@description("Generate one token on a small local model on a GPU (~50-150 tokens/s)")
+let latency_llm_local_token = 15 ms
+
+@url("https://artificialanalysis.ai/")
+@description("Generate one token on a hosted frontier model (~30-150 tokens/s)")
+let latency_llm_frontier_token = 20 ms
+
+@url("https://artificialanalysis.ai/")
+@description("Time to first token, small local model, short prompt")
+let latency_llm_local_first_token = 75 ms
+
+@url("https://artificialanalysis.ai/")
+@description("Generate one token on a small local model (CPU only, ~10 tokens/s)")
+let latency_llm_local_cpu_token = 100 ms
+
+@url("https://artificialanalysis.ai/")
+@description("Time to first token on specialized inference hardware")
+let latency_llm_fast_first_token = 250 ms
+
+# highlight: first token
+@url("https://artificialanalysis.ai/")
+@description("Time to first token, frontier model, short prompt, no cache (~0.5-2 s)")
+let latency_llm_frontier_first_token = 1 s
+
+# highlight: reply
+@url("https://artificialanalysis.ai/")
+@description("Short response (~100 output tokens): first token + 100 x token time")
+let latency_llm_frontier_response = 3 s
+
+@url("https://artificialanalysis.ai/")
+@description("Long context prefill (~100K input tokens, no cache; prefill runs ~5k-20k tokens/s)")
+let latency_llm_frontier_prefill = 10 s
+
+# highlight: reasoning
+@url("https://artificialanalysis.ai/")
+@description("Reasoning response (single call with thinking; 5 s to minutes)")
+let latency_llm_frontier_reasoning = 30 s
+
+# --- Tokens ---
+@url("https://help.openai.com/en/articles/4936856-what-are-tokens-and-how-to-count-them")
+@description("Tokens per English word (~1.3; 1 token is ~0.75 words or ~4 characters; tokenizer-specific)")
+let latency_llm_tokens_per_word = 1.33
+
+# --- GPU memory bandwidth (decode reads every weight once per token) ---
+@url("https://www.nvidia.com/en-us/data-center/h100/")
+@description("NVIDIA H100 SXM HBM bandwidth (3.35 TB/s, 80 GB)")
+let latency_llm_hbm_h100 = 3.35 TB/s
+
+# highlight: H200 HBM
+@url("https://www.nvidia.com/en-us/data-center/h200/")
+@description("NVIDIA H200 HBM bandwidth (4.8 TB/s, 141 GB)")
+let latency_llm_hbm_h200 = 4.8 TB/s
+
+@url("https://www.nvidia.com/en-us/data-center/dgx-b200/")
+@description("NVIDIA B200 HBM bandwidth per GPU (DGX B200: 64 TB/s across 8 GPUs, 1,440 GB total)")
+let latency_llm_hbm_b200 = 8 TB/s
+
+@url("https://www.nvidia.com/en-us/data-center/h100/")
+@description("Decode floor per token at batch size 1: weight bytes / memory bandwidth (70B params x 2 B on one H100: ~42 ms)")
+@example("latency_llm_decode_token(140 GB, 3.35 TB/s)")
+fn latency_llm_decode_token(weights: DigitalInformation, bandwidth: DigitalInformation / Time) -> Time = weights / bandwidth
+
+# --- GPU compute (prefill is compute bound: every prompt token runs every weight) ---
+# highlight: H100 BF16
+@url("https://www.nvidia.com/en-us/data-center/h100/")
+@description("NVIDIA H100 SXM dense BF16 tensor compute (~989 TFLOP/s; the spec sheet's 1,979 is with sparsity). Real kernels reach ~40-60% of it")
+let latency_llm_flop_h100 = 989 TFLOP/s
+
+@url("https://arxiv.org/abs/2001.08361")
+@description("Forward-pass compute for a dense transformer: 2 x params x tokens (Kaplan et al. 2020, C_forward ≈ 2N per token; attention adds a little at long context)")
+@example("latency_llm_forward_flop(70e9, 1_000) -> TFLOP")
+fn latency_llm_forward_flop(params: Scalar, tokens: Scalar) -> FloatingPointOperation = 2 * params * tokens * FLOP
+
+@url("https://arxiv.org/abs/2001.08361")
+@description("Prefill floor: latency_llm_forward_flop(params, tokens) / (compute x utilization), with 0 < utilization ≤ 1 (70B params, 10K tokens, one H100 at 50%: ~2.8 s)")
+@example("latency_llm_prefill(70e9, 10_000, latency_llm_flop_h100, 0.5)")
+fn latency_llm_prefill(params: Scalar, tokens: Scalar, compute: FloatingPointOperation / Time, utilization: Scalar) -> Time =
+  latency_llm_forward_flop(params, tokens) / (compute * utilization)
+
+@url("https://arxiv.org/abs/2309.06180")
+@description("KV cache bytes per token: 2 (K and V) x layers x kv_heads x head_dim x bytes per value")
+@example("latency_llm_kv_bytes_per_token(32, 8, 128, 2 B)")
+fn latency_llm_kv_bytes_per_token(layers: Scalar, kv_heads: Scalar, head_dim: Scalar, bytes: DigitalInformation) -> DigitalInformation = 2 * layers * kv_heads * head_dim * bytes

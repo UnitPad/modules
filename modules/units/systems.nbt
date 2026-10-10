@@ -1,0 +1,13 @@
+# The units of system design, and the currencies: what every UnitPad sheet starts with (named in `unitpad.json`).
+# In the Numbat command line, `use units::systems` in your `init.nbt` brings them in. One `use` per line, in order; a module
+# may rely on any module listed above it.
+
+# Currency is Numbat's: its `USD` and the other currencies, priced by the exchange rates UnitPad feeds it.
+use units::currencies
+
+# Count units, each its own dimension, by kind of thing counted.
+use units::systems::workload
+use units::systems::storage
+use units::systems::network
+use units::systems::compute
+use units::systems::aws

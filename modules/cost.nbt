@@ -1,0 +1,74 @@
+# AWS list prices, us-east-1
+# On-demand list prices; tiers, savings plans and other regions differ.
+# Prices use the built-in `USD` unit (dimension Money).
+# Import with:  use cost    then use the cost_* values
+# usage: cost_s3_storage * 10 TB * 1 year -> USD
+# usage: cost_ec2_vcpu * 8 vcpu * 1 hour -> USD
+# usage: cost_s3_put * 100_000 request -> USD
+# usage: cost_ebs_gp3_iops * 1_000 IOPS * 1 month -> USD
+# usage: cost_dynamodb_write * 1_000_000 dynamodb_write_request_unit -> USD
+# title: Cost (AWS)
+# checked: 2026-10
+# description: AWS us-east-1 list prices: compute, S3, EBS, DynamoDB and data transfer
+# vendor: aws
+# source: https://aws.amazon.com/pricing/
+
+# --- Compute ---
+# `vcpu` is a shared unit (`units::systems::compute`), so per-vCPU prices scale by a typed vCPU count.
+
+# highlight: m7i.large
+@url("https://instances.vantage.sh/aws/ec2/m7i.large")
+@description("EC2 m7i.large on-demand, Linux (2 vCPU, 8 GiB)")
+let cost_ec2_m7i_large = 0.1008 USD / hour
+
+@url("https://instances.vantage.sh/aws/ec2/m7i.large")
+@description("EC2 general-purpose price per vCPU-hour, 4 GiB RAM per vCPU (cost_ec2_m7i_large / (2 vcpu))")
+let cost_ec2_vcpu = cost_ec2_m7i_large / (2 vcpu)
+
+# --- S3 Standard ---
+# highlight: S3 storage
+@url("https://aws.amazon.com/s3/pricing/")
+@description("S3 Standard storage, first 50 TB")
+let cost_s3_storage = 0.023 USD / GB / month
+
+# S3 request prices are billed per request, so multiplying by a typed request
+# count produces USD.
+@url("https://aws.amazon.com/s3/pricing/")
+@description("S3 PUT/COPY/POST/LIST, per request ($0.005 per 1,000)")
+let cost_s3_put = 0.005 USD / (1000 request)
+
+@url("https://aws.amazon.com/s3/pricing/")
+@description("S3 GET, per request ($0.0004 per 1,000)")
+let cost_s3_get = 0.0004 USD / (1000 request)
+
+# --- EBS ---
+@url("https://aws.amazon.com/ebs/pricing/")
+@description("EBS gp3 storage (includes 3,000 IOPS and 125 MB/s)")
+let cost_ebs_gp3 = 0.08 USD / GB / month
+
+@url("https://aws.amazon.com/ebs/pricing/")
+@description("EBS gp3 IOPS above the 3,000 baseline, per provisioned IOPS-month")
+let cost_ebs_gp3_iops = 0.005 USD / IOPS / month
+
+# --- DynamoDB on-demand ---
+# Priced per read and write request unit (`dynamodb_rru`, `dynamodb_wru`), which
+# the shared `units` module defines so `throughput::db` caps use them too.
+
+@url("https://aws.amazon.com/dynamodb/pricing/on-demand/")
+@description("DynamoDB on-demand write, per write request unit ($0.625 per million)")
+let cost_dynamodb_write = 0.625 USD / (1_000_000 dynamodb_write_request_unit)
+
+@url("https://aws.amazon.com/dynamodb/pricing/on-demand/")
+@description("DynamoDB on-demand read, per read request unit ($0.125 per million)")
+let cost_dynamodb_read = 0.125 USD / (1_000_000 dynamodb_read_request_unit)
+
+# --- Data transfer ---
+# highlight: egress
+@url("https://aws.amazon.com/s3/pricing/")
+@description("Data transfer out to the internet, first 10 TB/month")
+let cost_egress_internet = 0.09 USD / GB
+
+# highlight: cross-AZ
+@url("https://aws.amazon.com/ec2/pricing/on-demand/")
+@description("Data transfer between AZs in a region, charged in each direction (so $0.02/GB per round trip; often dominates replication cost)")
+let cost_cross_az = 0.01 USD / GB

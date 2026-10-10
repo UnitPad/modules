@@ -1,0 +1,405 @@
+{
+  "version": "0.1.0",
+  "modules": {
+    "availability": {
+      "prelude": false,
+      "values": [
+        "availability_ebs_afr",
+        "availability_ec2_instance_sla",
+        "availability_ec2_region_sla",
+        "availability_hdd_afr",
+        "availability_s3_designed",
+        "availability_s3_durability",
+        "availability_s3_sla"
+      ],
+      "functions": [
+        "availability_downtime_month",
+        "availability_downtime_year",
+        "availability_nines",
+        "availability_parallel",
+        "availability_serial"
+      ],
+      "units": [],
+      "dimensions": []
+    },
+    "capacity": {
+      "prelude": false,
+      "values": ["capacity_peak_factor", "capacity_seconds_per_day", "capacity_target_utilization"],
+      "functions": [
+        "capacity_concurrency",
+        "capacity_fanout_slow",
+        "capacity_nodes",
+        "capacity_nodes_with_utilization",
+        "capacity_response_multiplier",
+        "capacity_retry_amplification",
+        "capacity_usl",
+        "capacity_usl_peak_nodes",
+        "capacity_wait_multiplier"
+      ],
+      "units": [],
+      "dimensions": []
+    },
+    "cost": {
+      "prelude": false,
+      "values": [
+        "cost_cross_az",
+        "cost_dynamodb_read",
+        "cost_dynamodb_write",
+        "cost_ebs_gp3",
+        "cost_ebs_gp3_iops",
+        "cost_ec2_m7i_large",
+        "cost_ec2_vcpu",
+        "cost_egress_internet",
+        "cost_s3_get",
+        "cost_s3_put",
+        "cost_s3_storage"
+      ],
+      "functions": [],
+      "units": [],
+      "dimensions": []
+    },
+    "count": {
+      "prelude": false,
+      "values": ["count_lambda_concurrency", "count_s3_parts_max"],
+      "functions": [],
+      "units": [],
+      "dimensions": []
+    },
+    "latency": {
+      "prelude": false,
+      "values": [
+        "latency_branch_mispredict",
+        "latency_compress_1kb",
+        "latency_datacenter_roundtrip",
+        "latency_disk_seek",
+        "latency_l1_cache",
+        "latency_l2_cache",
+        "latency_main_memory",
+        "latency_mutex_lock",
+        "latency_read_1mb_disk",
+        "latency_read_1mb_memory",
+        "latency_read_1mb_ssd",
+        "latency_read_4kb_ssd",
+        "latency_send_1kb_1gbps",
+        "latency_send_packet_ca_nl_ca"
+      ],
+      "functions": [],
+      "units": [],
+      "dimensions": []
+    },
+    "latency::hardware": {
+      "prelude": false,
+      "values": [
+        "latency_hardware_compress_1mb_zstd",
+        "latency_hardware_context_switch",
+        "latency_hardware_decompress_1mb_zstd",
+        "latency_hardware_ebs_gp3",
+        "latency_hardware_ebs_io2",
+        "latency_hardware_fsync_hdd",
+        "latency_hardware_fsync_ssd",
+        "latency_hardware_hdd_random_access",
+        "latency_hardware_nvme_read_4kb",
+        "latency_hardware_read_1mb_hdd",
+        "latency_hardware_read_1mb_memory",
+        "latency_hardware_read_1mb_nvme",
+        "latency_hardware_read_1mb_sata_ssd"
+      ],
+      "functions": [],
+      "units": [],
+      "dimensions": []
+    },
+    "latency::llm": {
+      "prelude": false,
+      "values": [
+        "latency_llm_fast_first_token",
+        "latency_llm_flop_h100",
+        "latency_llm_frontier_first_token",
+        "latency_llm_frontier_prefill",
+        "latency_llm_frontier_reasoning",
+        "latency_llm_frontier_response",
+        "latency_llm_frontier_token",
+        "latency_llm_hbm_b200",
+        "latency_llm_hbm_h100",
+        "latency_llm_hbm_h200",
+        "latency_llm_local_cpu_token",
+        "latency_llm_local_first_token",
+        "latency_llm_local_token",
+        "latency_llm_tokens_per_word"
+      ],
+      "functions": [
+        "latency_llm_decode_token",
+        "latency_llm_forward_flop",
+        "latency_llm_kv_bytes_per_token",
+        "latency_llm_prefill"
+      ],
+      "units": [],
+      "dimensions": []
+    },
+    "latency::network": {
+      "prelude": false,
+      "values": [
+        "latency_network_antipodal_rtt",
+        "latency_network_clock_uncertainty_ptp",
+        "latency_network_clock_uncertainty_truetime",
+        "latency_network_cross_az_rtt",
+        "latency_network_fiber_speed",
+        "latency_network_mobile_rtt",
+        "latency_network_same_az_rtt",
+        "latency_network_tcp_handshake_rtts",
+        "latency_network_tls13_handshake_rtts",
+        "latency_network_transatlantic_rtt",
+        "latency_network_transpacific_rtt",
+        "latency_network_us_coast_rtt"
+      ],
+      "functions": ["latency_network_fiber_rtt", "latency_network_new_connection"],
+      "units": [],
+      "dimensions": []
+    },
+    "latency::service": {
+      "prelude": false,
+      "values": [
+        "latency_service_consensus_read",
+        "latency_service_consensus_write",
+        "latency_service_dynamodb",
+        "latency_service_kafka_e2e",
+        "latency_service_kafka_e2e_p99",
+        "latency_service_kafka_e2e_p999",
+        "latency_service_kafka_fetch_max_wait",
+        "latency_service_kafka_replica_lag_max",
+        "latency_service_lambda_cold_start",
+        "latency_service_redis_get",
+        "latency_service_s3_express_first_byte",
+        "latency_service_s3_first_byte",
+        "latency_service_sql_point_query"
+      ],
+      "functions": [],
+      "units": [],
+      "dimensions": []
+    },
+    "size": {
+      "prelude": false,
+      "values": [
+        "size_dynamodb_item_max",
+        "size_dynamodb_partition_max",
+        "size_erasure_rs_6_3",
+        "size_int64",
+        "size_lambda_payload_max",
+        "size_mtu",
+        "size_ratio_lz4",
+        "size_ratio_zlib",
+        "size_ratio_zstd",
+        "size_replication_3x",
+        "size_s3_object_max",
+        "size_s3_part_min",
+        "size_sqs_message_max",
+        "size_tcp_ip_header",
+        "size_uuid",
+        "size_video_1080p",
+        "size_video_4k"
+      ],
+      "functions": [],
+      "units": [],
+      "dimensions": []
+    },
+    "throughput": {
+      "prelude": false,
+      "values": [
+        "throughput_dram",
+        "throughput_dram_channel",
+        "throughput_dram_core",
+        "throughput_dram_socket",
+        "throughput_l1",
+        "throughput_l2",
+        "throughput_l3",
+        "throughput_lan_100gbe",
+        "throughput_lan_10gbe",
+        "throughput_lan_1gbe",
+        "throughput_lan_25gbe",
+        "throughput_lan_400gbe",
+        "throughput_pcie3_x16",
+        "throughput_pcie4_x16",
+        "throughput_pcie5_x16"
+      ],
+      "functions": [],
+      "units": [],
+      "dimensions": []
+    },
+    "throughput::aws": {
+      "prelude": false,
+      "values": [
+        "throughput_aws_apigw_requests",
+        "throughput_aws_ebs_gp3_baseline",
+        "throughput_aws_ebs_gp3_baseline_iops",
+        "throughput_aws_ebs_gp3_max",
+        "throughput_aws_ebs_gp3_max_iops",
+        "throughput_aws_ec2_internet_small_instance",
+        "throughput_aws_ec2_single_flow",
+        "throughput_aws_kinesis_shard_read",
+        "throughput_aws_kinesis_shard_records",
+        "throughput_aws_kinesis_shard_write",
+        "throughput_aws_lambda_scale_requests",
+        "throughput_aws_link_local_packets",
+        "throughput_aws_nat_gateway_packets",
+        "throughput_aws_nat_gateway_packets_max",
+        "throughput_aws_sqs_fifo_high_requests",
+        "throughput_aws_sqs_fifo_requests"
+      ],
+      "functions": [],
+      "units": [],
+      "dimensions": []
+    },
+    "throughput::db": {
+      "prelude": false,
+      "values": [
+        "throughput_db_cassandra_client_write_ops",
+        "throughput_db_cassandra_read_ops",
+        "throughput_db_cassandra_write_ops",
+        "throughput_db_clickhouse_insert_requests",
+        "throughput_db_clickhouse_insert_rows",
+        "throughput_db_dynamodb_rcu",
+        "throughput_db_dynamodb_table_rcu",
+        "throughput_db_dynamodb_table_wcu",
+        "throughput_db_dynamodb_wcu",
+        "throughput_db_elasticsearch_index_records",
+        "throughput_db_mongodb_ops",
+        "throughput_db_redis_ops",
+        "throughput_db_redis_pipelined_ops",
+        "throughput_db_sql_node_ceiling_ops",
+        "throughput_db_sql_read_ops",
+        "throughput_db_sql_read_ops_high",
+        "throughput_db_sql_write_ops",
+        "throughput_db_sql_write_ops_high"
+      ],
+      "functions": [],
+      "units": [],
+      "dimensions": []
+    },
+    "throughput::s3": {
+      "prelude": false,
+      "values": [
+        "throughput_s3_connections_10gbe",
+        "throughput_s3_express_get_requests_default",
+        "throughput_s3_express_get_requests_max",
+        "throughput_s3_express_put_requests_default",
+        "throughput_s3_express_put_requests_max",
+        "throughput_s3_get_requests_per_prefix",
+        "throughput_s3_per_connection",
+        "throughput_s3_put_requests_per_prefix"
+      ],
+      "functions": [],
+      "units": [],
+      "dimensions": []
+    },
+    "throughput::service": {
+      "prelude": false,
+      "values": [
+        "throughput_service_cache_ops",
+        "throughput_service_db_read_ops",
+        "throughput_service_db_write_ops",
+        "throughput_service_kafka_msgs",
+        "throughput_service_kafka_partition",
+        "throughput_service_kafka_partitions_per_broker",
+        "throughput_service_requests"
+      ],
+      "functions": [],
+      "units": [],
+      "dimensions": []
+    },
+    "throughput::storage": {
+      "prelude": false,
+      "values": [
+        "throughput_storage_hdd_rand_read",
+        "throughput_storage_hdd_rand_read_iops",
+        "throughput_storage_hdd_rand_write",
+        "throughput_storage_hdd_rand_write_iops",
+        "throughput_storage_hdd_seq_read",
+        "throughput_storage_hdd_seq_write",
+        "throughput_storage_interface_pcie4_x4",
+        "throughput_storage_interface_pcie5_x4",
+        "throughput_storage_interface_sas3",
+        "throughput_storage_interface_sata3",
+        "throughput_storage_nvme_rand_read",
+        "throughput_storage_nvme_rand_read_iops",
+        "throughput_storage_nvme_rand_read_qd1_iops",
+        "throughput_storage_nvme_rand_write",
+        "throughput_storage_nvme_rand_write_iops",
+        "throughput_storage_nvme_seq_read",
+        "throughput_storage_nvme_seq_write",
+        "throughput_storage_sata_ssd_rand_read",
+        "throughput_storage_sata_ssd_rand_read_iops",
+        "throughput_storage_sata_ssd_rand_write",
+        "throughput_storage_sata_ssd_rand_write_iops",
+        "throughput_storage_sata_ssd_seq_read",
+        "throughput_storage_sata_ssd_seq_write",
+        "throughput_storage_tape_seq"
+      ],
+      "functions": [],
+      "units": [],
+      "dimensions": []
+    },
+    "units::systems": {
+      "prelude": true,
+      "values": [],
+      "functions": [],
+      "units": [],
+      "dimensions": []
+    },
+    "units::systems::aws": {
+      "prelude": true,
+      "values": [],
+      "functions": [],
+      "units": ["dynamodb_read_request_unit", "dynamodb_rru", "dynamodb_write_request_unit", "dynamodb_wru"],
+      "dimensions": ["DynamodbReadRequestUnit", "DynamodbWriteRequestUnit"]
+    },
+    "units::systems::compute": {
+      "prelude": true,
+      "values": [],
+      "functions": [],
+      "units": ["FLOP", "flop", "vcpu", "vcpus"],
+      "dimensions": ["FloatingPointOperation", "Vcpu"]
+    },
+    "units::systems::network": {
+      "prelude": true,
+      "values": [],
+      "functions": [],
+      "units": ["packet", "packets", "pkt", "pkts"],
+      "dimensions": ["Packet"]
+    },
+    "units::systems::storage": {
+      "prelude": true,
+      "values": [],
+      "functions": [],
+      "units": ["IOPS", "io", "iops", "ios"],
+      "dimensions": ["IoOperation"]
+    },
+    "units::systems::workload": {
+      "prelude": true,
+      "values": [],
+      "functions": [],
+      "units": [
+        "event",
+        "events",
+        "evt",
+        "message",
+        "messages",
+        "msg",
+        "msgs",
+        "op",
+        "operation",
+        "operations",
+        "ops",
+        "rec",
+        "record",
+        "records",
+        "recs",
+        "req",
+        "reqs",
+        "request",
+        "requests",
+        "row",
+        "rows"
+      ],
+      "dimensions": ["Event", "Message", "Operation", "Record", "Request", "Row"]
+    }
+  }
+}

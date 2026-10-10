@@ -1,0 +1,70 @@
+# Modern hardware latencies (2026)
+# Bulk reads are derived from the throughput modules (size / bandwidth) so the
+# two stay consistent; modules can't import each other, so the bandwidth is
+# repeated inline and named in each description.
+# Import with:  use latency::hardware    then use the latency_hardware_* values
+# title: Latency (hardware)
+# checked: unverified
+# description: Current memory, NVMe, SSD, HDD, fsync, EBS and context-switch latencies (2026)
+
+# --- Memory ---
+# highlight: 1 MB memory
+@url("https://www.cs.virginia.edu/stream/")
+@description("Read 1 MB sequentially from memory on one core (1 MB / throughput_dram_core 20 GB/s)")
+let latency_hardware_read_1mb_memory = 1 MB / (20 GB/s)
+
+@url("https://eli.thegreenplace.net/2018/measuring-context-switching-and-memory-overheads-for-linux-threads/")
+@description("Linux thread context switch, direct cost (measured 1.2-1.5 us pinned, ~2.2 us unpinned)")
+let latency_hardware_context_switch = 1.5 us
+
+# --- NVMe / SSD ---
+# highlight: NVMe 4K QD1
+@url("https://simplyblock.io/glossary/nvme-latency/")
+@description("NVMe random 4 KB read at queue depth 1 (20-100 us; set by NAND read time, not PCIe generation)")
+let latency_hardware_nvme_read_4kb = 60 us
+
+@url("https://semiconductor.samsung.com/ssd/enterprise-ssd/pm1743/")
+@description("Read 1 MB sequentially from a PCIe 5.0 NVMe SSD (1 MB / 14 GB/s)")
+let latency_hardware_read_1mb_nvme = 1 MB / (14 GB/s)
+
+@url("https://en.wikipedia.org/wiki/Solid-state_drive")
+@description("Read 1 MB sequentially from a SATA SSD (1 MB / 550 MB/s)")
+let latency_hardware_read_1mb_sata_ssd = 1 MB / (550 MB/s)
+
+# highlight: fsync SSD
+@url("https://etcd.io/docs/v3.5/op-guide/performance/")
+@description("fsync/fdatasync on SSD (etcd docs: often under 1 ms; enterprise drives with power-loss protection are ~tens of us)")
+let latency_hardware_fsync_ssd = 1 ms
+
+# --- HDD (7,200 RPM) ---
+# highlight: HDD random
+@url("https://en.wikipedia.org/wiki/IOPS")
+@description("HDD random 4 KB access, seek + rotation (1 / 75-80 IOPS; half a rotation alone is 4.17 ms)")
+let latency_hardware_hdd_random_access = 13 ms
+
+@url("https://en.wikipedia.org/wiki/Hard_disk_drive")
+@description("Read 1 MB sequentially from HDD (1 MB / 200 MB/s)")
+let latency_hardware_read_1mb_hdd = 1 MB / (200 MB/s)
+
+@url("https://etcd.io/docs/v3.5/op-guide/performance/")
+@description("fsync/fdatasync on a spinning disk (etcd docs: about 10 ms)")
+let latency_hardware_fsync_hdd = 10 ms
+
+# --- Cloud block storage ---
+# highlight: EBS io2
+@url("https://docs.aws.amazon.com/ebs/latest/userguide/general-purpose.html")
+@description("EBS io2 Block Express I/O, average for 16 KiB (AWS: under 500 us)")
+let latency_hardware_ebs_io2 = 500 us
+
+@url("https://docs.aws.amazon.com/ebs/latest/userguide/general-purpose.html")
+@description("EBS gp3 I/O (AWS: single-digit millisecond; ~1 ms typical)")
+let latency_hardware_ebs_gp3 = 1 ms
+
+# --- CPU work ---
+@url("https://github.com/facebook/zstd")
+@description("Compress 1 MB with zstd -1 on one core (1 MB / 510 MB/s; ratio ~2.9 on Silesia)")
+let latency_hardware_compress_1mb_zstd = 1 MB / (510 MB/s)
+
+@url("https://github.com/facebook/zstd")
+@description("Decompress 1 MB with zstd on one core (1 MB / 1,550 MB/s)")
+let latency_hardware_decompress_1mb_zstd = 1 MB / (1550 MB/s)

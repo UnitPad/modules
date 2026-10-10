@@ -1,0 +1,72 @@
+# Latency numbers every programmer should know
+# Jeff Dean / Peter Norvig — gist.github.com/jboner/2841832 (~2012)
+# Kept verbatim as the classic reference. Several values are 2012 hardware and
+# disagree with the 2026 throughput modules by 4-14x (memory, SSD, disk reads);
+# for current hardware use latency::hardware, for geography use latency::network.
+# Import with:  use latency    then use the latency_* values
+# title: Latency (classic)
+# checked: unverified
+# description: Jeff Dean / Peter Norvig latency numbers, verbatim (~2012)
+# source: https://gist.github.com/jboner/2841832
+
+# highlight: L1
+@url("https://gist.github.com/jboner/2841832")
+@description("L1 cache reference")
+let latency_l1_cache = 0.5 ns
+
+@url("https://gist.github.com/jboner/2841832")
+@description("Branch mispredict")
+let latency_branch_mispredict = 5 ns
+
+@url("https://gist.github.com/jboner/2841832")
+@description("L2 cache reference (14× L1)")
+let latency_l2_cache = 7 ns
+
+@url("https://gist.github.com/jboner/2841832")
+@description("Mutex lock / unlock")
+let latency_mutex_lock = 25 ns
+
+# highlight: memory
+@url("https://gist.github.com/jboner/2841832")
+@description("Main memory reference (20× L2, 200× L1)")
+let latency_main_memory = 100 ns
+
+@url("https://gist.github.com/jboner/2841832")
+@description("Compress 1 KB with Zippy")
+let latency_compress_1kb = 3 us
+
+@url("https://gist.github.com/jboner/2841832")
+@description("Send 1 KB over a 1 Gbps network")
+let latency_send_1kb_1gbps = 10 us
+
+# highlight: SSD 4K
+@url("https://gist.github.com/jboner/2841832")
+@description("Read 4 KB randomly from SSD (~1 GB/s)")
+let latency_read_4kb_ssd = 150 us
+
+@url("https://gist.github.com/jboner/2841832")
+@description("Read 1 MB sequentially from memory")
+let latency_read_1mb_memory = 250 us
+
+# highlight: DC RTT
+@url("https://gist.github.com/jboner/2841832")
+@description("Round trip within the same datacenter")
+let latency_datacenter_roundtrip = 500 us
+
+@url("https://gist.github.com/jboner/2841832")
+@description("Read 1 MB sequentially from SSD (~1 GB/s, 4× memory)")
+let latency_read_1mb_ssd = 1 ms
+
+# highlight: disk seek
+@url("https://gist.github.com/jboner/2841832")
+@description("Disk seek (20× datacenter round trip)")
+let latency_disk_seek = 10 ms
+
+@url("https://gist.github.com/jboner/2841832")
+@description("Read 1 MB sequentially from disk (80× memory, 20× SSD)")
+let latency_read_1mb_disk = 20 ms
+
+# highlight: CA→NL
+@url("https://gist.github.com/jboner/2841832")
+@description("Send a packet California → Netherlands → California")
+let latency_send_packet_ca_nl_ca = 150 ms

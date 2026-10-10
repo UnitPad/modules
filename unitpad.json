@@ -1,0 +1,35 @@
+{
+  "$comment": "What UnitPad reads from this package. `format`: the version of this file's own shape; it only grows (a new field is optional), and a package whose format UnitPad does not know is refused at build, not at run. `prelude`: the modules every sheet starts with (a module made of `use` lines is expanded, so one id can stand for many); they are not importable and not listed in the Modules menu. `types`: a module's type is the first part of its path (`throughput::s3` is a `throughput`); the Modules menu lists the types in this order, under these headings, and a type not listed follows, alphabetically, under its name with a capital.",
+  "format": 1,
+  "prelude": ["units::systems"],
+  "types": [
+    {
+      "id": "latency",
+      "title": "Latency"
+    },
+    {
+      "id": "throughput",
+      "title": "Throughput"
+    },
+    {
+      "id": "size",
+      "title": "Size"
+    },
+    {
+      "id": "count",
+      "title": "Count"
+    },
+    {
+      "id": "capacity",
+      "title": "Capacity"
+    },
+    {
+      "id": "availability",
+      "title": "Availability"
+    },
+    {
+      "id": "cost",
+      "title": "Cost"
+    }
+  ]
+}

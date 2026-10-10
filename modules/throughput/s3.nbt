@@ -1,0 +1,44 @@
+# Amazon S3 request-rate and throughput numbers
+# Sources: AWS S3 performance documentation. Object/multipart caps live in `size` and `count`.
+# Import with:  use throughput::s3    then use the throughput_s3_* values
+# title: Throughput (S3)
+# checked: unverified
+# description: Amazon S3 request rates, connections and throughput
+# vendor: aws
+# source: https://docs.aws.amazon.com/AmazonS3/latest/userguide/optimizing-performance.html
+
+# highlight: GET/s per prefix
+@url("https://docs.aws.amazon.com/AmazonS3/latest/userguide/optimizing-performance.html")
+@description("S3 Standard: GET/HEAD requests per second per prefix (at least)")
+let throughput_s3_get_requests_per_prefix = 5_500 request/s
+
+@url("https://docs.aws.amazon.com/AmazonS3/latest/userguide/optimizing-performance.html")
+@description("S3 Standard: PUT/COPY/POST/DELETE per second per prefix (at least)")
+let throughput_s3_put_requests_per_prefix = 3_500 request/s
+
+# highlight: per connection
+@url("https://d1.awsstatic.com/whitepapers/AmazonS3BestPractices.pdf")
+@description("S3 Standard: one concurrent request per ~85-90 MB/s of desired throughput (legacy whitepaper; no longer in current docs)")
+let throughput_s3_per_connection = 90 MB/s
+
+@url("https://d1.awsstatic.com/whitepapers/AmazonS3BestPractices.pdf")
+@description("S3 Standard: ~15 concurrent connections to saturate a 10 Gb/s NIC (legacy whitepaper)")
+let throughput_s3_connections_10gbe = 15
+
+# highlight: Express GET/s
+@url("https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-performance.html")
+@description("S3 Express One Zone: default GET TPS per directory bucket")
+let throughput_s3_express_get_requests_default = 200_000 request/s
+
+@url("https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-optimizing-performance-design-patterns.html")
+@description("S3 Express One Zone: max GET TPS per directory bucket (up to)")
+let throughput_s3_express_get_requests_max = 2_000_000 request/s
+
+@url("https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-performance.html")
+@description("S3 Express One Zone: default PUT TPS per directory bucket")
+let throughput_s3_express_put_requests_default = 100_000 request/s
+
+@url("https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-optimizing-performance-design-patterns.html")
+@description("S3 Express One Zone: max PUT TPS per directory bucket (up to)")
+let throughput_s3_express_put_requests_max = 200_000 request/s
+

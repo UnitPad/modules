@@ -1,0 +1,18 @@
+# Dimensionless platform caps
+# Counts that are neither time, rate nor bytes: concurrency and item counts.
+# A count of something the shared units cover carries that unit; others are plain.
+# Import with:  use count    then use the count_* values
+# title: Count
+# checked: unverified
+# description: Dimensionless caps: concurrent executions and items per object
+# vendor: aws
+
+# highlight: Lambda concurrency
+@url("https://docs.aws.amazon.com/lambda/latest/dg/gettingstarted-limits.html")
+@description("Lambda default concurrent executions per region (adjustable to tens of thousands); in requests, so it compares with capacity_concurrency")
+let count_lambda_concurrency = 1_000 request
+
+# highlight: parts per object
+@url("https://docs.aws.amazon.com/AmazonS3/latest/userguide/qfacts.html")
+@description("S3 maximum parts per multipart upload")
+let count_s3_parts_max = 10_000

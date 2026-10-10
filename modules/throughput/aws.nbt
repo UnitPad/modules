@@ -1,0 +1,86 @@
+# AWS managed-service rate quotas
+# Per-second throughput ceilings, mostly adjustable. Byte caps live in `size`
+# and dimensionless caps in `count`; this module is only rates.
+# Import with:  use throughput::aws    then use the throughput_aws_* values
+# title: Throughput (AWS)
+# checked: unverified
+# description: AWS rate quotas: EC2 network, VPC packet limits, EBS, Kinesis, SQS, Lambda and API Gateway
+# vendor: aws
+
+# --- EC2 network ---
+# highlight: EC2 flow
+@url("https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-instance-network-bandwidth.html")
+@description("EC2 single TCP/UDP flow bandwidth outside a cluster placement group (5 Gbps; 10 Gbps inside one, 25 Gbps with ENA Express)")
+let throughput_aws_ec2_single_flow = 5 Gbit/s
+
+@url("https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-instance-network-bandwidth.html")
+@description("EC2 bandwidth to the internet for instances under 32 vCPUs (5 Gbps; larger ones get 50% of instance bandwidth)")
+let throughput_aws_ec2_internet_small_instance = 5 Gbit/s
+
+# --- VPC packet limits ---
+# highlight: link-local pps
+@url("https://docs.aws.amazon.com/vpc/latest/userguide/AmazonDNS-concepts.html")
+@description("Packets per second to link-local services per network interface: Route 53 Resolver DNS, IMDS and NTP together (1,024; cannot be increased)")
+let throughput_aws_link_local_packets = 1_024 packet/s
+
+@url("https://docs.aws.amazon.com/vpc/latest/userguide/nat-gateway-basics.html")
+@description("NAT gateway packet rate before it scales (1 million packets/s; 5 Gbps of bandwidth)")
+let throughput_aws_nat_gateway_packets = 1_000_000 packet/s
+
+@url("https://docs.aws.amazon.com/vpc/latest/userguide/nat-gateway-basics.html")
+@description("NAT gateway maximum packet rate after scaling (10 million packets/s; beyond it packets drop, so split across subnets)")
+let throughput_aws_nat_gateway_packets_max = 10_000_000 packet/s
+
+# --- EBS gp3 ---
+# highlight: gp3 baseline
+@url("https://docs.aws.amazon.com/ebs/latest/userguide/general-purpose.html")
+@description("EBS gp3 baseline IOPS included in the price")
+let throughput_aws_ebs_gp3_baseline_iops = 3_000 IOPS
+
+@url("https://docs.aws.amazon.com/ebs/latest/userguide/general-purpose.html")
+@description("EBS gp3 baseline throughput included in the price (125 MiB/s)")
+let throughput_aws_ebs_gp3_baseline = 125 MiB/s
+
+@url("https://docs.aws.amazon.com/ebs/latest/userguide/general-purpose.html")
+@description("EBS gp3 maximum provisioned IOPS per volume (80,000; 500 IOPS per GiB)")
+let throughput_aws_ebs_gp3_max_iops = 80_000 IOPS
+
+@url("https://docs.aws.amazon.com/ebs/latest/userguide/general-purpose.html")
+@description("EBS gp3 maximum provisioned throughput per volume (2,000 MiB/s)")
+let throughput_aws_ebs_gp3_max = 2_000 MiB/s
+
+# --- Kinesis Data Streams (provisioned, per shard) ---
+# highlight: Kinesis shard
+@url("https://docs.aws.amazon.com/streams/latest/dev/service-sizes-and-limits.html")
+@description("Kinesis shard write limit (1 MB/s or 1,000 records/s, whichever hits first)")
+let throughput_aws_kinesis_shard_write = 1 MB/s
+
+@url("https://docs.aws.amazon.com/streams/latest/dev/service-sizes-and-limits.html")
+@description("Kinesis shard write record limit")
+let throughput_aws_kinesis_shard_records = 1_000 record/s
+
+@url("https://docs.aws.amazon.com/streams/latest/dev/service-sizes-and-limits.html")
+@description("Kinesis shard read limit, shared by consumers (2 MB/s; enhanced fan-out gives each consumer its own)")
+let throughput_aws_kinesis_shard_read = 2 MB/s
+
+# --- SQS ---
+# highlight: SQS FIFO
+@url("https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/quotas-messages.html")
+@description("SQS FIFO API calls per second per action, without high-throughput mode (3,000 messages/s with batches of 10)")
+let throughput_aws_sqs_fifo_requests = 300 request/s
+
+@url("https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/quotas-messages.html")
+@description("SQS FIFO high-throughput mode API calls per second (us-east-1; 700k messages/s batched; standard queues are nearly unlimited)")
+let throughput_aws_sqs_fifo_high_requests = 70_000 request/s
+
+# --- Lambda ---
+# highlight: Lambda scale
+@url("https://docs.aws.amazon.com/lambda/latest/dg/gettingstarted-limits.html")
+@description("Lambda concurrency scaling rate per function (1,000 execution environments every 10 s, i.e. 100/s); in requests in flight, like count_lambda_concurrency")
+let throughput_aws_lambda_scale_requests = 100 request/s
+
+# --- API Gateway ---
+# highlight: API GW
+@url("https://docs.aws.amazon.com/apigateway/latest/developerguide/limits.html")
+@description("API Gateway throttle per account per region (10,000 RPS, burst 5,000; adjustable)")
+let throughput_aws_apigw_requests = 10_000 request/s

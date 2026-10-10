@@ -1,0 +1,67 @@
+# Capacity-planning rules of thumb
+# Peak traffic, utilization headroom, Little's Law, queueing, fan-out tails and USL.
+# Import with:  use capacity    then use the capacity_* values and functions
+# title: Capacity
+# checked: unverified
+# description: Peak factor, utilization target, node sizing, queueing (Little's Law, M/M/1, USL) and fan-out tail math
+
+# highlight: peak factor
+@description("Peak-to-average traffic factor (2-5; rule of thumb with no primary source, replace with your measured peak/avg)")
+let capacity_peak_factor = 3
+
+# highlight: target util
+@url("https://en.wikipedia.org/wiki/M/M/1_queue")
+@description("Keep steady-state utilization below this; single-server queueing delay grows as rho/(1-rho)")
+let capacity_target_utilization = 0.7
+
+# highlight: seconds/day
+@url("https://en.wikipedia.org/wiki/Day")
+@description("Seconds per day (~10^5 s, so QPS is roughly daily actions / 86_400 s)")
+let capacity_seconds_per_day = 86_400 s
+
+@url("https://en.wikipedia.org/wiki/Little%27s_law")
+@description("Concurrency in flight (Little's Law, L = lambda * W): rate times time")
+@example("capacity_concurrency(200 request/s, 0.5 s)")
+fn capacity_concurrency<R: Dim>(rate: R / Time, w: Time) -> R = rate * w
+
+@url("https://en.wikipedia.org/wiki/M/M/1_queue")
+@description("M/M/1 mean queueing delay in units of service time, rho/(1-rho); requires 0 ≤ rho < 1. Values: 1.0 at 50%, 2.3 at 70%, 9.0 at 90%. A pool of many workers (M/M/c) queues far less at the same rho")
+@example("capacity_wait_multiplier(0.7)")
+fn capacity_wait_multiplier(rho: Scalar) -> Scalar = rho / (1 - rho)
+
+@url("https://en.wikipedia.org/wiki/M/M/1_queue")
+@description("M/M/1 mean response time in units of service time, 1/(1-rho); requires 0 ≤ rho < 1. Values: 2x at 50%, 3.3x at 70%, 10x at 90%")
+@example("capacity_response_multiplier(0.7)")
+fn capacity_response_multiplier(rho: Scalar) -> Scalar = 1 / (1 - rho)
+
+@url("https://en.wikipedia.org/wiki/M/M/c_queue")
+@description("Nodes so each runs at or below a given utilization (0 < utilization ≤ 1): ceil(load / (per_node * utilization))")
+@example("capacity_nodes_with_utilization(5000 request/s, 1000 request/s, 0.7)")
+fn capacity_nodes_with_utilization<D: Dim>(load: D, per_node: D, utilization: Scalar) -> Scalar =
+  ceil(load / (per_node * utilization))
+
+@url("https://en.wikipedia.org/wiki/M/M/c_queue")
+@description("Nodes so each runs at or below capacity_target_utilization (the module default). Pass your own utilization with capacity_nodes_with_utilization")
+@example("capacity_nodes(5000 request/s, 1000 request/s)")
+fn capacity_nodes<D: Dim>(load: D, per_node: D) -> Scalar =
+  capacity_nodes_with_utilization(load, per_node, capacity_target_utilization)
+
+@url("https://cacm.acm.org/research/the-tail-at-scale/")
+@description("Fraction of fan-out requests that hit at least one slow backend: 1 - (1 - p_slow)^n. 1% slow over 100 backends is 63%")
+@example("capacity_fanout_slow(0.01, 100)")
+fn capacity_fanout_slow(p_slow: Scalar, n: Scalar) -> Scalar = 1 - (1 - p_slow)^n
+
+@url("https://sre.google/sre-book/addressing-cascading-failures/")
+@description("Load amplification when every layer retries: attempts^depth (Google SRE: 3 retries = 4 attempts at 3 layers is 64x)")
+@example("capacity_retry_amplification(4, 3)")
+fn capacity_retry_amplification(attempts: Scalar, depth: Scalar) -> Scalar = attempts^depth
+
+@url("http://www.perfdynamics.com/Manifesto/USLscalability.html")
+@description("Universal Scalability Law relative throughput C(N) for node count N > 0, contention alpha ≥ 0, and coherency beta ≥ 0")
+@example("capacity_usl(8, 0.1, 0.01)")
+fn capacity_usl(n: Scalar, alpha: Scalar, beta: Scalar) -> Scalar = n / (1 + alpha * (n - 1) + beta * n * (n - 1))
+
+@url("http://www.perfdynamics.com/Manifesto/USLscalability.html")
+@description("Node count where USL throughput peaks, N* = sqrt((1 - alpha) / beta). Requires 0 ≤ alpha < 1 and beta > 0")
+@example("capacity_usl_peak_nodes(0.1, 0.01)")
+fn capacity_usl_peak_nodes(alpha: Scalar, beta: Scalar) -> Scalar = sqrt((1 - alpha) / beta)

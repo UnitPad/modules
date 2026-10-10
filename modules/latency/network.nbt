@@ -1,0 +1,74 @@
+# Network latency by geography, plus protocol round trips and clock error
+# Physics sets the floor: light in fiber covers ~200 km per ms.
+# Import with:  use latency::network    then use the latency_network_* values and functions
+# title: Latency (network)
+# checked: unverified
+# description: Fiber speed, same-AZ / cross-AZ / cross-region RTTs, handshakes and clock uncertainty
+# vendor: aws
+# source: https://etcd.io/docs/v3.5/op-guide/performance/
+
+# --- Physics ---
+@url("https://en.wikipedia.org/wiki/Optical_fiber")
+@description("Speed of light in fiber (c / refractive index ~1.47, about 204,000 km/s or ~5 us per km)")
+let latency_network_fiber_speed = 299_792_458 m/s / 1.47
+
+@url("https://en.wikipedia.org/wiki/Optical_fiber")
+@description("Round-trip floor over fiber for a straight-line distance: 2 × distance / latency_network_fiber_speed; real routes are ~1.5-2x longer")
+@example("latency_network_fiber_rtt(100 km)")
+fn latency_network_fiber_rtt(distance: Length) -> Time = 2 * distance / latency_network_fiber_speed
+
+# --- Cloud geography (AWS) ---
+# highlight: same AZ
+@url("https://www.bitsand.cloud/posts/cross-az-latencies")
+@description("RTT within one availability zone (~50-200 us; estimate, AWS publishes no figure, measure with ping)")
+let latency_network_same_az_rtt = 100 us
+
+# highlight: cross AZ
+@url("https://www.bitsand.cloud/posts/cross-az-latencies")
+@description("RTT between AZs in one region (measured 0.39-2.42 ms across 28 regions, most under 1 ms; AWS: single-digit ms)")
+let latency_network_cross_az_rtt = 1 ms
+
+@url("https://www.cloudping.co/")
+@description("RTT US East <-> US West (us-east-1 <-> us-west-2, ~60-70 ms; etcd docs: ~50 ms within the US)")
+let latency_network_us_coast_rtt = 65 ms
+
+# highlight: transatlantic
+@url("https://www.cloudping.co/")
+@description("RTT US East <-> Western Europe (us-east-1 <-> eu-west-1, ~70-80 ms)")
+let latency_network_transatlantic_rtt = 75 ms
+
+@url("https://www.cloudping.co/")
+@description("RTT US West <-> Japan (us-west-2 <-> ap-northeast-1, ~100 ms)")
+let latency_network_transpacific_rtt = 100 ms
+
+@url("https://www.cloudping.co/")
+@description("RTT US East <-> Australia (us-east-1 <-> ap-southeast-2, ~200 ms; etcd docs: up to 400 ms between continents)")
+let latency_network_antipodal_rtt = 200 ms
+
+# --- Last mile ---
+@url("https://hpbn.co/mobile-networks/")
+@description("Mobile (4G LTE) RTT to the first internet hop (~50 ms; 3G is several hundred ms)")
+let latency_network_mobile_rtt = 50 ms
+
+# --- Protocol round trips (multiply by the RTT) ---
+@url("https://www.rfc-editor.org/rfc/rfc9293")
+@description("Round trips for a TCP handshake before the first request byte")
+let latency_network_tcp_handshake_rtts = 1
+
+@url("https://www.rfc-editor.org/rfc/rfc8446")
+@description("Extra round trips for a TLS 1.3 handshake (TLS 1.2 needs 2; 0-RTT resumption needs 0)")
+let latency_network_tls13_handshake_rtts = 1
+
+@url("https://www.rfc-editor.org/rfc/rfc8446")
+@description("Time to the first response on a new TCP + TLS 1.3 connection: (latency_network_tcp_handshake_rtts + latency_network_tls13_handshake_rtts + 1) × rtt")
+@example("latency_network_new_connection(20 ms)")
+fn latency_network_new_connection(rtt: Time) -> Time = (latency_network_tcp_handshake_rtts + latency_network_tls13_handshake_rtts + 1) * rtt
+
+# --- Clocks ---
+@url("https://static.googleusercontent.com/media/research.google.com/en//archive/spanner-osdi2012.pdf")
+@description("Spanner TrueTime uncertainty epsilon (sawtooth 1-7 ms, ~4 ms most of the time); NTP over the internet is similar or worse")
+let latency_network_clock_uncertainty_truetime = 4 ms
+
+@url("https://aws.amazon.com/about-aws/whats-new/2023/11/amazon-time-sync-service-microsecond-accurate-time/")
+@description("Amazon Time Sync with PTP hardware clocks: microsecond-range accuracy on supported EC2 instances")
+let latency_network_clock_uncertainty_ptp = 1 us

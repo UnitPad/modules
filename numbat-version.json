@@ -1,0 +1,10 @@
+{
+  "$comment": "The version of the official `numbat` program that the values are held to, and the SHA-256 of its release archive for each platform (taken from the release on GitHub when the version was chosen). A newer version is a change of this file, together with `values.json`.",
+  "version": "1.24.0",
+  "sha256": {
+    "x86_64-unknown-linux-gnu": "ed45b8bce7b1b92d68ef8685ddeb17d5378749f34148d8ecc1384cdfeebc8620",
+    "aarch64-unknown-linux-gnu": "653947b17c885496549a823e69a9422e0b94182c07deabd321e9dc8fd2621bc9",
+    "x86_64-apple-darwin": "5894c60d674732a4fccfdc248539f101c8e2944805505f3f7591ed588cd84ef1",
+    "aarch64-apple-darwin": "947e0d6e2dbff56a3d6c85282787b62013502a6d35d317d919e09f620433d177"
+  }
+}

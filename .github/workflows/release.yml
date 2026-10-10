@@ -1,0 +1,49 @@
+name: Release
+
+# A tag `vX.Y.Z` publishes that version to npm. Nobody publishes from a laptop: the package then names the commit it was built from.
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: read
+  id-token: write # npm provenance
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - run: npm ci
+      - run: node tools/install-numbat.mjs
+      - run: npm run check
+        env:
+          REQUIRE_NUMBAT: '1'
+
+      - name: The tag is the version
+        run: test "v$(node -p "require('./package.json').version")" = "$GITHUB_REF_NAME"
+
+      # `api.json` must be the names of exactly this release (`node tools/api.mjs --update` before the tag).
+      - run: node tools/api.mjs --release
+
+      # The same for the values: `values.json` is exactly this release (`node tools/values.mjs --update`).
+      - run: node tools/values.mjs --release
+        env:
+          REQUIRE_NUMBAT: '1'
+
+      - run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -1,0 +1,21 @@
+# Shared units for compute. In every session (via `units::systems`), not importable.
+# title: Shared units (compute)
+# description: The floating-point operation and the vCPU
+
+# One floating-point operation, for compute budgets (`2 TFLOP/s`, `1 teraflop`).
+# No `flops` alias: FLOPS usually means FLOP per second, so write `FLOP/s`.
+dimension FloatingPointOperation
+
+@name("Floating-point operation")
+@url("https://en.wikipedia.org/wiki/FLOPS")
+@metric_prefixes
+@aliases(FLOP: short, flop)
+unit FLOP: FloatingPointOperation
+
+# A vCPU is a separate count dimension so per-vCPU prices can be scaled by a
+# typed vCPU count instead of an untyped scalar.
+dimension Vcpu
+
+@name("vCPU")
+@aliases(vcpus)
+unit vcpu: Vcpu

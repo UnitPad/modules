@@ -1,0 +1,74 @@
+# Throughput numbers every programmer should know
+# Memory, interconnect and network bandwidth.
+# Import with:  use throughput    then use the throughput_* values
+# title: Throughput
+# checked: unverified
+# description: Cache, DRAM, PCIe and network bandwidth
+# source: https://en.wikipedia.org/wiki/List_of_interface_bit_rates
+
+# --- CPU caches (per core, measured; varies ~2x by microarchitecture) ---
+@url("https://en.wikipedia.org/wiki/CPU_cache")
+@description("L1 cache bandwidth per core (~1 TB/s; estimate: 2 x 64 B loads/cycle at ~5 GHz is 640 GB/s, more with AVX-512)")
+let throughput_l1 = 1 TB/s
+
+@url("https://en.wikipedia.org/wiki/CPU_cache")
+@description("L2 cache bandwidth per core (~200-500 GB/s; estimate: 64 B/cycle at ~5 GHz)")
+let throughput_l2 = 300 GB/s
+
+@url("https://en.wikipedia.org/wiki/CPU_cache")
+@description("L3 cache bandwidth seen by one core (~100-200 GB/s; whole-chip aggregate is much higher)")
+let throughput_l3 = 150 GB/s
+
+# --- DRAM: per channel, per core, per socket differ by ~10x ---
+# highlight: DRAM/socket
+@url("https://www.amd.com/content/dam/amd/en/documents/epyc-business-docs/datasheets/amd-epyc-9005-series-processor-datasheet.pdf")
+@description("DRAM bandwidth per server socket, peak (12 x DDR5-6000 channels = 576 GB/s on AMD EPYC 9005)")
+let throughput_dram_socket = 576 GB/s
+
+@url("https://en.wikipedia.org/wiki/DDR5_SDRAM")
+@description("DRAM bandwidth per DDR5-4800 channel/DIMM (4.8 GT/s x 8 B = 38.4 GB/s; DDR5-6400 is 51.2 GB/s)")
+let throughput_dram_channel = 38.4 GB/s
+
+@url("https://www.cs.virginia.edu/stream/")
+@description("DRAM bandwidth one core can pull (~10-30 GB/s; estimate, measure with STREAM)")
+let throughput_dram_core = 20 GB/s
+
+@url("https://en.wikipedia.org/wiki/DDR5_SDRAM")
+@description("Alias of throughput_dram_channel; prefer the explicit _core / _channel / _socket values")
+let throughput_dram = throughput_dram_channel
+
+# --- PCIe (x16, per direction) ---
+@url("https://en.wikipedia.org/wiki/PCI_Express")
+@description("PCIe 3.0 x16 interconnect (15.75 GB/s per direction)")
+let throughput_pcie3_x16 = 15.75 GB/s
+
+@url("https://en.wikipedia.org/wiki/PCI_Express")
+@description("PCIe 4.0 x16 interconnect (31.5 GB/s per direction)")
+let throughput_pcie4_x16 = 31.5 GB/s
+
+# highlight: PCIe 5
+@url("https://en.wikipedia.org/wiki/PCI_Express")
+@description("PCIe 5.0 x16 interconnect (63 GB/s per direction)")
+let throughput_pcie5_x16 = 63 GB/s
+
+# --- Ethernet line rates (TCP goodput is ~90-95% of these) ---
+@url("https://en.wikipedia.org/wiki/List_of_interface_bit_rates")
+@description("1 Gigabit Ethernet (125 MB/s)")
+let throughput_lan_1gbe = 125 MB/s
+
+@url("https://en.wikipedia.org/wiki/List_of_interface_bit_rates")
+@description("10 Gigabit Ethernet")
+let throughput_lan_10gbe = 1.25 GB/s
+
+@url("https://en.wikipedia.org/wiki/List_of_interface_bit_rates")
+@description("25 Gigabit Ethernet (a common cloud server NIC)")
+let throughput_lan_25gbe = 3.125 GB/s
+
+# highlight: 100 GbE
+@url("https://en.wikipedia.org/wiki/List_of_interface_bit_rates")
+@description("100 Gigabit Ethernet")
+let throughput_lan_100gbe = 12.5 GB/s
+
+@url("https://en.wikipedia.org/wiki/List_of_interface_bit_rates")
+@description("400 Gigabit Ethernet (datacenter spine / AI cluster links)")
+let throughput_lan_400gbe = 50 GB/s

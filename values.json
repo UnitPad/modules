@@ -1,0 +1,1086 @@
+{
+  "version": "0.1.0",
+  "numbat": "1.24.0",
+  "modules": {
+    "availability": {
+      "values": {
+        "availability_ebs_afr": {
+          "value": "0.002",
+          "type": "Scalar"
+        },
+        "availability_ec2_instance_sla": {
+          "value": "0.995",
+          "type": "Scalar"
+        },
+        "availability_ec2_region_sla": {
+          "value": "0.9999",
+          "type": "Scalar"
+        },
+        "availability_hdd_afr": {
+          "value": "0.0136",
+          "type": "Scalar"
+        },
+        "availability_s3_designed": {
+          "value": "0.9999",
+          "type": "Scalar"
+        },
+        "availability_s3_durability": {
+          "value": "1",
+          "type": "Scalar"
+        },
+        "availability_s3_sla": {
+          "value": "0.999",
+          "type": "Scalar"
+        }
+      },
+      "functions": {
+        "availability_downtime_month": {
+          "signature": "fn availability_downtime_month(a: Scalar) -> Time",
+          "description": "Average downtime per month at availability fraction a (0 ≤ a ≤ 1; pass 0.999 or 99.9%, not 99.9), using Numbat's average month unit. 99.9% is ~44 min, 99.99% is ~4.4 min",
+          "examples": [
+            {
+              "code": "availability_downtime_month(0.999)",
+              "value": "0.001 month",
+              "type": "Time"
+            }
+          ]
+        },
+        "availability_downtime_year": {
+          "signature": "fn availability_downtime_year(a: Scalar) -> Time",
+          "description": "Downtime per year at availability fraction a (0 ≤ a ≤ 1; pass 0.999 or 99.9%, not 99.9). 99.9% is ~8.8 h, 99.99% is ~53 min, 99.999% is ~5.3 min",
+          "examples": [
+            {
+              "code": "availability_downtime_year(0.999)",
+              "value": "0.001 yr",
+              "type": "Time"
+            }
+          ]
+        },
+        "availability_nines": {
+          "signature": "fn availability_nines(n: Scalar) -> Scalar",
+          "description": "Availability with n nines (n ≥ 0): availability_nines(4) is 0.9999",
+          "examples": [
+            {
+              "code": "availability_nines(4)",
+              "value": "0.9999",
+              "type": "Scalar"
+            }
+          ]
+        },
+        "availability_parallel": {
+          "signature": "fn availability_parallel(a: Scalar, n: Scalar) -> Scalar",
+          "description": "Availability of n independent replicas where any one suffices: 1 - (1 - a)^n. Pass availability a from 0 to 1 and a nonnegative replica count n",
+          "examples": [
+            {
+              "code": "availability_parallel(0.99, 3)",
+              "value": "0.999999",
+              "type": "Scalar"
+            }
+          ]
+        },
+        "availability_serial": {
+          "signature": "fn availability_serial(a: Scalar, b: Scalar) -> Scalar",
+          "description": "Availability of two components in series (both must work): multiply their availability fractions a and b, each from 0 to 1",
+          "examples": [
+            {
+              "code": "availability_serial(0.99, 0.999)",
+              "value": "0.98901",
+              "type": "Scalar"
+            }
+          ]
+        }
+      }
+    },
+    "capacity": {
+      "values": {
+        "capacity_peak_factor": {
+          "value": "3",
+          "type": "Scalar"
+        },
+        "capacity_seconds_per_day": {
+          "value": "86400 s",
+          "type": "Time"
+        },
+        "capacity_target_utilization": {
+          "value": "0.7",
+          "type": "Scalar"
+        }
+      },
+      "functions": {
+        "capacity_concurrency": {
+          "signature": "fn capacity_concurrency<R: Dim>(rate: R / Time, w: Time) -> R",
+          "description": "Concurrency in flight (Little's Law, L = lambda * W): rate times time",
+          "examples": [
+            {
+              "code": "capacity_concurrency(200 request/s, 0.5 s)",
+              "value": "100 request",
+              "type": "Request"
+            }
+          ]
+        },
+        "capacity_fanout_slow": {
+          "signature": "fn capacity_fanout_slow(p_slow: Scalar, n: Scalar) -> Scalar",
+          "description": "Fraction of fan-out requests that hit at least one slow backend: 1 - (1 - p_slow)^n. 1% slow over 100 backends is 63%",
+          "examples": [
+            {
+              "code": "capacity_fanout_slow(0.01, 100)",
+              "value": "0.633968",
+              "type": "Scalar"
+            }
+          ]
+        },
+        "capacity_nodes": {
+          "signature": "fn capacity_nodes<D: Dim>(load: D, per_node: D) -> Scalar",
+          "description": "Nodes so each runs at or below capacity_target_utilization (the module default). Pass your own utilization with capacity_nodes_with_utilization",
+          "examples": [
+            {
+              "code": "capacity_nodes(5000 request/s, 1000 request/s)",
+              "value": "8",
+              "type": "Scalar"
+            }
+          ]
+        },
+        "capacity_nodes_with_utilization": {
+          "signature": "fn capacity_nodes_with_utilization<D: Dim>(load: D, per_node: D, utilization: Scalar) -> Scalar",
+          "description": "Nodes so each runs at or below a given utilization (0 < utilization ≤ 1): ceil(load / (per_node * utilization))",
+          "examples": [
+            {
+              "code": "capacity_nodes_with_utilization(5000 request/s, 1000 request/s, 0.7)",
+              "value": "8",
+              "type": "Scalar"
+            }
+          ]
+        },
+        "capacity_response_multiplier": {
+          "signature": "fn capacity_response_multiplier(rho: Scalar) -> Scalar",
+          "description": "M/M/1 mean response time in units of service time, 1/(1-rho); requires 0 ≤ rho < 1. Values: 2x at 50%, 3.3x at 70%, 10x at 90%",
+          "examples": [
+            {
+              "code": "capacity_response_multiplier(0.7)",
+              "value": "3.33333",
+              "type": "Scalar"
+            }
+          ]
+        },
+        "capacity_retry_amplification": {
+          "signature": "fn capacity_retry_amplification(attempts: Scalar, depth: Scalar) -> Scalar",
+          "description": "Load amplification when every layer retries: attempts^depth (Google SRE: 3 retries = 4 attempts at 3 layers is 64x)",
+          "examples": [
+            {
+              "code": "capacity_retry_amplification(4, 3)",
+              "value": "64",
+              "type": "Scalar"
+            }
+          ]
+        },
+        "capacity_usl": {
+          "signature": "fn capacity_usl(n: Scalar, alpha: Scalar, beta: Scalar) -> Scalar",
+          "description": "Universal Scalability Law relative throughput C(N) for node count N > 0, contention alpha ≥ 0, and coherency beta ≥ 0",
+          "examples": [
+            {
+              "code": "capacity_usl(8, 0.1, 0.01)",
+              "value": "3.53982",
+              "type": "Scalar"
+            }
+          ]
+        },
+        "capacity_usl_peak_nodes": {
+          "signature": "fn capacity_usl_peak_nodes(alpha: Scalar, beta: Scalar) -> Scalar",
+          "description": "Node count where USL throughput peaks, N* = sqrt((1 - alpha) / beta). Requires 0 ≤ alpha < 1 and beta > 0",
+          "examples": [
+            {
+              "code": "capacity_usl_peak_nodes(0.1, 0.01)",
+              "value": "9.48683",
+              "type": "Scalar"
+            }
+          ]
+        },
+        "capacity_wait_multiplier": {
+          "signature": "fn capacity_wait_multiplier(rho: Scalar) -> Scalar",
+          "description": "M/M/1 mean queueing delay in units of service time, rho/(1-rho); requires 0 ≤ rho < 1. Values: 1.0 at 50%, 2.3 at 70%, 9.0 at 90%. A pool of many workers (M/M/c) queues far less at the same rho",
+          "examples": [
+            {
+              "code": "capacity_wait_multiplier(0.7)",
+              "value": "2.33333",
+              "type": "Scalar"
+            }
+          ]
+        }
+      }
+    },
+    "cost": {
+      "values": {
+        "cost_cross_az": {
+          "value": "0.01 $/GB",
+          "type": "Money / DigitalInformation"
+        },
+        "cost_dynamodb_read": {
+          "value": "1.25e-7 $/dynamodb_read_request_unit",
+          "type": "Money / DynamodbReadRequestUnit"
+        },
+        "cost_dynamodb_write": {
+          "value": "6.25e-7 $/dynamodb_write_request_unit",
+          "type": "Money / DynamodbWriteRequestUnit"
+        },
+        "cost_ebs_gp3": {
+          "value": "0.08 $/(GB·month)",
+          "type": "Money / (DigitalInformation × Time)"
+        },
+        "cost_ebs_gp3_iops": {
+          "value": "0.005 $/(IOPS·month)",
+          "type": "Money / IoOperation"
+        },
+        "cost_ec2_m7i_large": {
+          "value": "0.1008 $/h",
+          "type": "Money / Time"
+        },
+        "cost_ec2_vcpu": {
+          "value": "0.0504 $/(h·vcpu)",
+          "type": "Money / (Time × Vcpu)"
+        },
+        "cost_egress_internet": {
+          "value": "0.09 $/GB",
+          "type": "Money / DigitalInformation"
+        },
+        "cost_s3_get": {
+          "value": "4.00000e-7 $/request",
+          "type": "Money / Request"
+        },
+        "cost_s3_put": {
+          "value": "0.000005 $/request",
+          "type": "Money / Request"
+        },
+        "cost_s3_storage": {
+          "value": "0.023 $/(GB·month)",
+          "type": "Money / (DigitalInformation × Time)"
+        }
+      },
+      "functions": {}
+    },
+    "count": {
+      "values": {
+        "count_lambda_concurrency": {
+          "value": "1000 request",
+          "type": "Request"
+        },
+        "count_s3_parts_max": {
+          "value": "10000",
+          "type": "Scalar"
+        }
+      },
+      "functions": {}
+    },
+    "latency": {
+      "values": {
+        "latency_branch_mispredict": {
+          "value": "5 ns",
+          "type": "Time"
+        },
+        "latency_compress_1kb": {
+          "value": "3 µs",
+          "type": "Time"
+        },
+        "latency_datacenter_roundtrip": {
+          "value": "500 µs",
+          "type": "Time"
+        },
+        "latency_disk_seek": {
+          "value": "10 ms",
+          "type": "Time"
+        },
+        "latency_l1_cache": {
+          "value": "0.5 ns",
+          "type": "Time"
+        },
+        "latency_l2_cache": {
+          "value": "7 ns",
+          "type": "Time"
+        },
+        "latency_main_memory": {
+          "value": "100 ns",
+          "type": "Time"
+        },
+        "latency_mutex_lock": {
+          "value": "25 ns",
+          "type": "Time"
+        },
+        "latency_read_1mb_disk": {
+          "value": "20 ms",
+          "type": "Time"
+        },
+        "latency_read_1mb_memory": {
+          "value": "250 µs",
+          "type": "Time"
+        },
+        "latency_read_1mb_ssd": {
+          "value": "1 ms",
+          "type": "Time"
+        },
+        "latency_read_4kb_ssd": {
+          "value": "150 µs",
+          "type": "Time"
+        },
+        "latency_send_1kb_1gbps": {
+          "value": "10 µs",
+          "type": "Time"
+        },
+        "latency_send_packet_ca_nl_ca": {
+          "value": "150 ms",
+          "type": "Time"
+        }
+      },
+      "functions": {}
+    },
+    "latency::hardware": {
+      "values": {
+        "latency_hardware_compress_1mb_zstd": {
+          "value": "0.00196078 s",
+          "type": "Time"
+        },
+        "latency_hardware_context_switch": {
+          "value": "1.5 µs",
+          "type": "Time"
+        },
+        "latency_hardware_decompress_1mb_zstd": {
+          "value": "0.000645161 s",
+          "type": "Time"
+        },
+        "latency_hardware_ebs_gp3": {
+          "value": "1 ms",
+          "type": "Time"
+        },
+        "latency_hardware_ebs_io2": {
+          "value": "500 µs",
+          "type": "Time"
+        },
+        "latency_hardware_fsync_hdd": {
+          "value": "10 ms",
+          "type": "Time"
+        },
+        "latency_hardware_fsync_ssd": {
+          "value": "1 ms",
+          "type": "Time"
+        },
+        "latency_hardware_hdd_random_access": {
+          "value": "13 ms",
+          "type": "Time"
+        },
+        "latency_hardware_nvme_read_4kb": {
+          "value": "60 µs",
+          "type": "Time"
+        },
+        "latency_hardware_read_1mb_hdd": {
+          "value": "0.005 s",
+          "type": "Time"
+        },
+        "latency_hardware_read_1mb_memory": {
+          "value": "0.00005 s",
+          "type": "Time"
+        },
+        "latency_hardware_read_1mb_nvme": {
+          "value": "0.0000714286 s",
+          "type": "Time"
+        },
+        "latency_hardware_read_1mb_sata_ssd": {
+          "value": "0.00181818 s",
+          "type": "Time"
+        }
+      },
+      "functions": {}
+    },
+    "latency::llm": {
+      "values": {
+        "latency_llm_fast_first_token": {
+          "value": "250 ms",
+          "type": "Time"
+        },
+        "latency_llm_flop_h100": {
+          "value": "989 TFLOP/s",
+          "type": "FloatingPointOperation / Time"
+        },
+        "latency_llm_frontier_first_token": {
+          "value": "1 s",
+          "type": "Time"
+        },
+        "latency_llm_frontier_prefill": {
+          "value": "10 s",
+          "type": "Time"
+        },
+        "latency_llm_frontier_reasoning": {
+          "value": "30 s",
+          "type": "Time"
+        },
+        "latency_llm_frontier_response": {
+          "value": "3 s",
+          "type": "Time"
+        },
+        "latency_llm_frontier_token": {
+          "value": "20 ms",
+          "type": "Time"
+        },
+        "latency_llm_hbm_b200": {
+          "value": "8 TB/s",
+          "type": "DataRate"
+        },
+        "latency_llm_hbm_h100": {
+          "value": "3.35 TB/s",
+          "type": "DataRate"
+        },
+        "latency_llm_hbm_h200": {
+          "value": "4.8 TB/s",
+          "type": "DataRate"
+        },
+        "latency_llm_local_cpu_token": {
+          "value": "100 ms",
+          "type": "Time"
+        },
+        "latency_llm_local_first_token": {
+          "value": "75 ms",
+          "type": "Time"
+        },
+        "latency_llm_local_token": {
+          "value": "15 ms",
+          "type": "Time"
+        },
+        "latency_llm_tokens_per_word": {
+          "value": "1.33",
+          "type": "Scalar"
+        }
+      },
+      "functions": {
+        "latency_llm_decode_token": {
+          "signature": "fn latency_llm_decode_token(weights: DigitalInformation, bandwidth: DigitalInformation / Time) -> Time",
+          "description": "Decode floor per token at batch size 1: weight bytes / memory bandwidth (70B params x 2 B on one H100: ~42 ms)",
+          "examples": [
+            {
+              "code": "latency_llm_decode_token(140 GB, 3.35 TB/s)",
+              "value": "0.041791 s",
+              "type": "Time"
+            }
+          ]
+        },
+        "latency_llm_forward_flop": {
+          "signature": "fn latency_llm_forward_flop(params: Scalar, tokens: Scalar) -> FloatingPointOperation",
+          "description": "Forward-pass compute for a dense transformer: 2 x params x tokens (Kaplan et al. 2020, C_forward ≈ 2N per token; attention adds a little at long context)",
+          "examples": [
+            {
+              "code": "latency_llm_forward_flop(70e9, 1_000) -> TFLOP",
+              "value": "140 TFLOP",
+              "type": "FloatingPointOperation"
+            }
+          ]
+        },
+        "latency_llm_kv_bytes_per_token": {
+          "signature": "fn latency_llm_kv_bytes_per_token(layers: Scalar, kv_heads: Scalar, head_dim: Scalar, bytes: DigitalInformation) -> DigitalInformation",
+          "description": "KV cache bytes per token: 2 (K and V) x layers x kv_heads x head_dim x bytes per value",
+          "examples": [
+            {
+              "code": "latency_llm_kv_bytes_per_token(32, 8, 128, 2 B)",
+              "value": "131_072 B",
+              "type": "DigitalInformation"
+            }
+          ]
+        },
+        "latency_llm_prefill": {
+          "signature": "fn latency_llm_prefill(params: Scalar, tokens: Scalar, compute: FloatingPointOperation / Time, utilization: Scalar) -> Time",
+          "description": "Prefill floor: latency_llm_forward_flop(params, tokens) / (compute x utilization), with 0 < utilization ≤ 1 (70B params, 10K tokens, one H100 at 50%: ~2.8 s)",
+          "examples": [
+            {
+              "code": "latency_llm_prefill(70e9, 10_000, latency_llm_flop_h100, 0.5)",
+              "value": "2.83114 s",
+              "type": "Time"
+            }
+          ]
+        }
+      }
+    },
+    "latency::network": {
+      "values": {
+        "latency_network_antipodal_rtt": {
+          "value": "200 ms",
+          "type": "Time"
+        },
+        "latency_network_clock_uncertainty_ptp": {
+          "value": "1 µs",
+          "type": "Time"
+        },
+        "latency_network_clock_uncertainty_truetime": {
+          "value": "4 ms",
+          "type": "Time"
+        },
+        "latency_network_cross_az_rtt": {
+          "value": "1 ms",
+          "type": "Time"
+        },
+        "latency_network_fiber_speed": {
+          "value": "2.03940e+8 m/s",
+          "type": "Velocity"
+        },
+        "latency_network_mobile_rtt": {
+          "value": "50 ms",
+          "type": "Time"
+        },
+        "latency_network_same_az_rtt": {
+          "value": "100 µs",
+          "type": "Time"
+        },
+        "latency_network_tcp_handshake_rtts": {
+          "value": "1",
+          "type": "Scalar"
+        },
+        "latency_network_tls13_handshake_rtts": {
+          "value": "1",
+          "type": "Scalar"
+        },
+        "latency_network_transatlantic_rtt": {
+          "value": "75 ms",
+          "type": "Time"
+        },
+        "latency_network_transpacific_rtt": {
+          "value": "100 ms",
+          "type": "Time"
+        },
+        "latency_network_us_coast_rtt": {
+          "value": "65 ms",
+          "type": "Time"
+        }
+      },
+      "functions": {
+        "latency_network_fiber_rtt": {
+          "signature": "fn latency_network_fiber_rtt(distance: Length) -> Time",
+          "description": "Round-trip floor over fiber for a straight-line distance: 2 × distance / latency_network_fiber_speed; real routes are ~1.5-2x longer",
+          "examples": [
+            {
+              "code": "latency_network_fiber_rtt(100 km)",
+              "value": "0.000980678 s",
+              "type": "Time"
+            }
+          ]
+        },
+        "latency_network_new_connection": {
+          "signature": "fn latency_network_new_connection(rtt: Time) -> Time",
+          "description": "Time to the first response on a new TCP + TLS 1.3 connection: (latency_network_tcp_handshake_rtts + latency_network_tls13_handshake_rtts + 1) × rtt",
+          "examples": [
+            {
+              "code": "latency_network_new_connection(20 ms)",
+              "value": "60 ms",
+              "type": "Time"
+            }
+          ]
+        }
+      }
+    },
+    "latency::service": {
+      "values": {
+        "latency_service_consensus_read": {
+          "value": "0.7 ms",
+          "type": "Time"
+        },
+        "latency_service_consensus_write": {
+          "value": "1.6 ms",
+          "type": "Time"
+        },
+        "latency_service_dynamodb": {
+          "value": "5 ms",
+          "type": "Time"
+        },
+        "latency_service_kafka_e2e": {
+          "value": "2 ms",
+          "type": "Time"
+        },
+        "latency_service_kafka_e2e_p99": {
+          "value": "5 ms",
+          "type": "Time"
+        },
+        "latency_service_kafka_e2e_p999": {
+          "value": "14 ms",
+          "type": "Time"
+        },
+        "latency_service_kafka_fetch_max_wait": {
+          "value": "500 ms",
+          "type": "Time"
+        },
+        "latency_service_kafka_replica_lag_max": {
+          "value": "30 s",
+          "type": "Time"
+        },
+        "latency_service_lambda_cold_start": {
+          "value": "500 ms",
+          "type": "Time"
+        },
+        "latency_service_redis_get": {
+          "value": "0.3 ms",
+          "type": "Time"
+        },
+        "latency_service_s3_express_first_byte": {
+          "value": "5 ms",
+          "type": "Time"
+        },
+        "latency_service_s3_first_byte": {
+          "value": "150 ms",
+          "type": "Time"
+        },
+        "latency_service_sql_point_query": {
+          "value": "1 ms",
+          "type": "Time"
+        }
+      },
+      "functions": {}
+    },
+    "size": {
+      "values": {
+        "size_dynamodb_item_max": {
+          "value": "400 KiB",
+          "type": "DigitalInformation"
+        },
+        "size_dynamodb_partition_max": {
+          "value": "10 GiB",
+          "type": "DigitalInformation"
+        },
+        "size_erasure_rs_6_3": {
+          "value": "1.5",
+          "type": "Scalar"
+        },
+        "size_int64": {
+          "value": "8 B",
+          "type": "DigitalInformation"
+        },
+        "size_lambda_payload_max": {
+          "value": "6 MB",
+          "type": "DigitalInformation"
+        },
+        "size_mtu": {
+          "value": "1500 B",
+          "type": "DigitalInformation"
+        },
+        "size_ratio_lz4": {
+          "value": "2.101",
+          "type": "Scalar"
+        },
+        "size_ratio_zlib": {
+          "value": "2.743",
+          "type": "Scalar"
+        },
+        "size_ratio_zstd": {
+          "value": "2.896",
+          "type": "Scalar"
+        },
+        "size_replication_3x": {
+          "value": "3",
+          "type": "Scalar"
+        },
+        "size_s3_object_max": {
+          "value": "48.8 TiB",
+          "type": "DigitalInformation"
+        },
+        "size_s3_part_min": {
+          "value": "5 MiB",
+          "type": "DigitalInformation"
+        },
+        "size_sqs_message_max": {
+          "value": "1 MiB",
+          "type": "DigitalInformation"
+        },
+        "size_tcp_ip_header": {
+          "value": "40 B",
+          "type": "DigitalInformation"
+        },
+        "size_uuid": {
+          "value": "16 B",
+          "type": "DigitalInformation"
+        },
+        "size_video_1080p": {
+          "value": "8 Mbit/s",
+          "type": "DataRate"
+        },
+        "size_video_4k": {
+          "value": "40 Mbit/s",
+          "type": "DataRate"
+        }
+      },
+      "functions": {}
+    },
+    "throughput": {
+      "values": {
+        "throughput_dram": {
+          "value": "38.4 GB/s",
+          "type": "DataRate"
+        },
+        "throughput_dram_channel": {
+          "value": "38.4 GB/s",
+          "type": "DataRate"
+        },
+        "throughput_dram_core": {
+          "value": "20 GB/s",
+          "type": "DataRate"
+        },
+        "throughput_dram_socket": {
+          "value": "576 GB/s",
+          "type": "DataRate"
+        },
+        "throughput_l1": {
+          "value": "1 TB/s",
+          "type": "DataRate"
+        },
+        "throughput_l2": {
+          "value": "300 GB/s",
+          "type": "DataRate"
+        },
+        "throughput_l3": {
+          "value": "150 GB/s",
+          "type": "DataRate"
+        },
+        "throughput_lan_100gbe": {
+          "value": "12.5 GB/s",
+          "type": "DataRate"
+        },
+        "throughput_lan_10gbe": {
+          "value": "1.25 GB/s",
+          "type": "DataRate"
+        },
+        "throughput_lan_1gbe": {
+          "value": "125 MB/s",
+          "type": "DataRate"
+        },
+        "throughput_lan_25gbe": {
+          "value": "3.125 GB/s",
+          "type": "DataRate"
+        },
+        "throughput_lan_400gbe": {
+          "value": "50 GB/s",
+          "type": "DataRate"
+        },
+        "throughput_pcie3_x16": {
+          "value": "15.75 GB/s",
+          "type": "DataRate"
+        },
+        "throughput_pcie4_x16": {
+          "value": "31.5 GB/s",
+          "type": "DataRate"
+        },
+        "throughput_pcie5_x16": {
+          "value": "63 GB/s",
+          "type": "DataRate"
+        }
+      },
+      "functions": {}
+    },
+    "throughput::aws": {
+      "values": {
+        "throughput_aws_apigw_requests": {
+          "value": "10000 request/s",
+          "type": "Request / Time"
+        },
+        "throughput_aws_ebs_gp3_baseline": {
+          "value": "125 MiB/s",
+          "type": "DataRate"
+        },
+        "throughput_aws_ebs_gp3_baseline_iops": {
+          "value": "3000 IOPS",
+          "type": "IoOperation / Time"
+        },
+        "throughput_aws_ebs_gp3_max": {
+          "value": "2000 MiB/s",
+          "type": "DataRate"
+        },
+        "throughput_aws_ebs_gp3_max_iops": {
+          "value": "80000 IOPS",
+          "type": "IoOperation / Time"
+        },
+        "throughput_aws_ec2_internet_small_instance": {
+          "value": "5 Gbit/s",
+          "type": "DataRate"
+        },
+        "throughput_aws_ec2_single_flow": {
+          "value": "5 Gbit/s",
+          "type": "DataRate"
+        },
+        "throughput_aws_kinesis_shard_read": {
+          "value": "2 MB/s",
+          "type": "DataRate"
+        },
+        "throughput_aws_kinesis_shard_records": {
+          "value": "1000 record/s",
+          "type": "Record / Time"
+        },
+        "throughput_aws_kinesis_shard_write": {
+          "value": "1 MB/s",
+          "type": "DataRate"
+        },
+        "throughput_aws_lambda_scale_requests": {
+          "value": "100 request/s",
+          "type": "Request / Time"
+        },
+        "throughput_aws_link_local_packets": {
+          "value": "1024 packet/s",
+          "type": "Packet / Time"
+        },
+        "throughput_aws_nat_gateway_packets": {
+          "value": "1_000_000 packet/s",
+          "type": "Packet / Time"
+        },
+        "throughput_aws_nat_gateway_packets_max": {
+          "value": "10_000_000 packet/s",
+          "type": "Packet / Time"
+        },
+        "throughput_aws_sqs_fifo_high_requests": {
+          "value": "70000 request/s",
+          "type": "Request / Time"
+        },
+        "throughput_aws_sqs_fifo_requests": {
+          "value": "300 request/s",
+          "type": "Request / Time"
+        }
+      },
+      "functions": {}
+    },
+    "throughput::db": {
+      "values": {
+        "throughput_db_cassandra_client_write_ops": {
+          "value": "16666.7 operation/s",
+          "type": "Operation / Time"
+        },
+        "throughput_db_cassandra_read_ops": {
+          "value": "25000 operation/s",
+          "type": "Operation / Time"
+        },
+        "throughput_db_cassandra_write_ops": {
+          "value": "50000 operation/s",
+          "type": "Operation / Time"
+        },
+        "throughput_db_clickhouse_insert_requests": {
+          "value": "1 request/s",
+          "type": "Request / Time"
+        },
+        "throughput_db_clickhouse_insert_rows": {
+          "value": "1_000_000 row/s",
+          "type": "Row / Time"
+        },
+        "throughput_db_dynamodb_rcu": {
+          "value": "3000 dynamodb_read_request_unit/s",
+          "type": "DynamodbReadRequestUnit / Time"
+        },
+        "throughput_db_dynamodb_table_rcu": {
+          "value": "40000 dynamodb_read_request_unit/s",
+          "type": "DynamodbReadRequestUnit / Time"
+        },
+        "throughput_db_dynamodb_table_wcu": {
+          "value": "40000 dynamodb_write_request_unit/s",
+          "type": "DynamodbWriteRequestUnit / Time"
+        },
+        "throughput_db_dynamodb_wcu": {
+          "value": "1000 dynamodb_write_request_unit/s",
+          "type": "DynamodbWriteRequestUnit / Time"
+        },
+        "throughput_db_elasticsearch_index_records": {
+          "value": "20000 record/s",
+          "type": "Record / Time"
+        },
+        "throughput_db_mongodb_ops": {
+          "value": "50000 operation/s",
+          "type": "Operation / Time"
+        },
+        "throughput_db_redis_ops": {
+          "value": "150_000 operation/s",
+          "type": "Operation / Time"
+        },
+        "throughput_db_redis_pipelined_ops": {
+          "value": "1_000_000 operation/s",
+          "type": "Operation / Time"
+        },
+        "throughput_db_sql_node_ceiling_ops": {
+          "value": "50000 operation/s",
+          "type": "Operation / Time"
+        },
+        "throughput_db_sql_read_ops": {
+          "value": "20000 operation/s",
+          "type": "Operation / Time"
+        },
+        "throughput_db_sql_read_ops_high": {
+          "value": "500_000 operation/s",
+          "type": "Operation / Time"
+        },
+        "throughput_db_sql_write_ops": {
+          "value": "5000 operation/s",
+          "type": "Operation / Time"
+        },
+        "throughput_db_sql_write_ops_high": {
+          "value": "45000 operation/s",
+          "type": "Operation / Time"
+        }
+      },
+      "functions": {}
+    },
+    "throughput::s3": {
+      "values": {
+        "throughput_s3_connections_10gbe": {
+          "value": "15",
+          "type": "Scalar"
+        },
+        "throughput_s3_express_get_requests_default": {
+          "value": "200_000 request/s",
+          "type": "Request / Time"
+        },
+        "throughput_s3_express_get_requests_max": {
+          "value": "2_000_000 request/s",
+          "type": "Request / Time"
+        },
+        "throughput_s3_express_put_requests_default": {
+          "value": "100_000 request/s",
+          "type": "Request / Time"
+        },
+        "throughput_s3_express_put_requests_max": {
+          "value": "200_000 request/s",
+          "type": "Request / Time"
+        },
+        "throughput_s3_get_requests_per_prefix": {
+          "value": "5500 request/s",
+          "type": "Request / Time"
+        },
+        "throughput_s3_per_connection": {
+          "value": "90 MB/s",
+          "type": "DataRate"
+        },
+        "throughput_s3_put_requests_per_prefix": {
+          "value": "3500 request/s",
+          "type": "Request / Time"
+        }
+      },
+      "functions": {}
+    },
+    "throughput::service": {
+      "values": {
+        "throughput_service_cache_ops": {
+          "value": "100_000 operation/s",
+          "type": "Operation / Time"
+        },
+        "throughput_service_db_read_ops": {
+          "value": "20000 operation/s",
+          "type": "Operation / Time"
+        },
+        "throughput_service_db_write_ops": {
+          "value": "5000 operation/s",
+          "type": "Operation / Time"
+        },
+        "throughput_service_kafka_msgs": {
+          "value": "500_000 message/s",
+          "type": "Message / Time"
+        },
+        "throughput_service_kafka_partition": {
+          "value": "10 MB/s",
+          "type": "DataRate"
+        },
+        "throughput_service_kafka_partitions_per_broker": {
+          "value": "4000",
+          "type": "Scalar"
+        },
+        "throughput_service_requests": {
+          "value": "10000 request/s",
+          "type": "Request / Time"
+        }
+      },
+      "functions": {}
+    },
+    "throughput::storage": {
+      "values": {
+        "throughput_storage_hdd_rand_read": {
+          "value": "0.3125 MiB/s",
+          "type": "DataRate"
+        },
+        "throughput_storage_hdd_rand_read_iops": {
+          "value": "80 IOPS",
+          "type": "IoOperation / Time"
+        },
+        "throughput_storage_hdd_rand_write": {
+          "value": "0.3125 MiB/s",
+          "type": "DataRate"
+        },
+        "throughput_storage_hdd_rand_write_iops": {
+          "value": "80 IOPS",
+          "type": "IoOperation / Time"
+        },
+        "throughput_storage_hdd_seq_read": {
+          "value": "200 MB/s",
+          "type": "DataRate"
+        },
+        "throughput_storage_hdd_seq_write": {
+          "value": "200 MB/s",
+          "type": "DataRate"
+        },
+        "throughput_storage_interface_pcie4_x4": {
+          "value": "7.88 GB/s",
+          "type": "DataRate"
+        },
+        "throughput_storage_interface_pcie5_x4": {
+          "value": "15.75 GB/s",
+          "type": "DataRate"
+        },
+        "throughput_storage_interface_sas3": {
+          "value": "1.2 GB/s",
+          "type": "DataRate"
+        },
+        "throughput_storage_interface_sata3": {
+          "value": "600 MB/s",
+          "type": "DataRate"
+        },
+        "throughput_storage_nvme_rand_read": {
+          "value": "3906.25 MiB/s",
+          "type": "DataRate"
+        },
+        "throughput_storage_nvme_rand_read_iops": {
+          "value": "1_000_000 IOPS",
+          "type": "IoOperation / Time"
+        },
+        "throughput_storage_nvme_rand_read_qd1_iops": {
+          "value": "16000 IOPS",
+          "type": "IoOperation / Time"
+        },
+        "throughput_storage_nvme_rand_write": {
+          "value": "1171.88 MiB/s",
+          "type": "DataRate"
+        },
+        "throughput_storage_nvme_rand_write_iops": {
+          "value": "300_000 IOPS",
+          "type": "IoOperation / Time"
+        },
+        "throughput_storage_nvme_seq_read": {
+          "value": "14 GB/s",
+          "type": "DataRate"
+        },
+        "throughput_storage_nvme_seq_write": {
+          "value": "12 GB/s",
+          "type": "DataRate"
+        },
+        "throughput_storage_sata_ssd_rand_read": {
+          "value": "390.625 MiB/s",
+          "type": "DataRate"
+        },
+        "throughput_storage_sata_ssd_rand_read_iops": {
+          "value": "100_000 IOPS",
+          "type": "IoOperation / Time"
+        },
+        "throughput_storage_sata_ssd_rand_write": {
+          "value": "351.563 MiB/s",
+          "type": "DataRate"
+        },
+        "throughput_storage_sata_ssd_rand_write_iops": {
+          "value": "90000 IOPS",
+          "type": "IoOperation / Time"
+        },
+        "throughput_storage_sata_ssd_seq_read": {
+          "value": "550 MB/s",
+          "type": "DataRate"
+        },
+        "throughput_storage_sata_ssd_seq_write": {
+          "value": "520 MB/s",
+          "type": "DataRate"
+        },
+        "throughput_storage_tape_seq": {
+          "value": "400 MB/s",
+          "type": "DataRate"
+        }
+      },
+      "functions": {}
+    }
+  }
+}

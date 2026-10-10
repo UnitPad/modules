@@ -1,0 +1,51 @@
+# Shared count units for the workload a system is given: what it receives, handles and keeps. In every session (via `units::systems`), not importable.
+# title: Shared units (workload)
+# description: Count units for events, operations, requests, messages, rows and records
+
+# Count units. Each is its own base dimension, so rates in different entities do
+# NOT mix: `message/s` and `record/s` are different dimensions, and converting
+# between them needs an explicit ratio (e.g. `records_per_message = 10 record/message`).
+# Rates are written `<unit>/s` — `50_000 operation/s`, `500 message/s`.
+# Laid out like Numbat's own `units::placeholder`: a named dimension, then its unit.
+
+# Something that happened, as logged or emitted
+dimension Event
+
+@name("Event")
+@aliases(evt, events)
+unit event: Event
+
+# One call against a backend: a cache get, a query, a queue send
+dimension Operation
+
+@name("Operation")
+@aliases(op, ops, operations)
+unit operation: Operation
+
+# One call a client makes to a service
+dimension Request
+
+@name("Request")
+@aliases(req, reqs, requests)
+unit request: Request
+
+# One message on a queue or stream
+dimension Message
+
+@name("Message")
+@aliases(msg, msgs, messages)
+unit message: Message
+
+# One row in a table
+dimension Row
+
+@name("Row")
+@aliases(rows)
+unit row: Row
+
+# One record in a log, a file or a stream
+dimension Record
+
+@name("Record")
+@aliases(rec, recs, records)
+unit record: Record

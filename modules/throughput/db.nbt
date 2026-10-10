@@ -1,0 +1,97 @@
+# Per-database throughput, order of magnitude
+# Figures from each engine's own benchmark tooling. They swing by ~10x with
+# hardware, payload, durability (fsync) and cache hit rate, so treat them as
+# magnitudes, not specs. Some are in documents/rows per second (Elasticsearch,
+# ClickHouse), not operations; DynamoDB values are per-partition/per-table caps.
+# Byte caps and counts live in `size` and `count`.
+# Import with:  use throughput::db    then use the throughput_db_* values
+# title: Throughput (DB)
+# checked: unverified
+# description: Order-of-magnitude per-engine rates and DynamoDB caps: Redis, Cassandra, MongoDB, SQL, DynamoDB, Elasticsearch, ClickHouse
+# vendor: aws, redis, cassandra, mongodb, mysql, postgresql, elasticsearch, clickhouse
+
+# --- Redis (in-memory; command execution is single-threaded) ---
+# highlight: Redis
+@url("https://redis.io/docs/latest/operate/oss_and_stack/management/optimization/benchmarks/")
+@description("Redis GET/SET on one instance, no pipelining (~10^5 ops/s)")
+let throughput_db_redis_ops = 150_000 operation/s
+
+@url("https://redis.io/docs/latest/operate/oss_and_stack/management/optimization/benchmarks/")
+@description("Redis GET/SET with pipelining, network-bound (>10^6 ops/s)")
+let throughput_db_redis_pipelined_ops = 1_000_000 operation/s
+
+# --- Cassandra (wide-column, LSM) ---
+# highlight: Cassandra write
+@url("https://axonops.com/docs/data-platforms/cassandra/operations/performance/benchmarking")
+@description("Cassandra replica writes per node (~20k-100k/s); client-visible writes per node are this / replication factor")
+let throughput_db_cassandra_write_ops = 50_000 operation/s
+
+@url("https://netflixtechblog.com/benchmarking-cassandra-scalability-on-aws-over-a-million-writes-per-second-39f45f066c9e")
+@description("Cassandra client writes per node: throughput_db_cassandra_write_ops / replication factor (RF=3; Netflix 2011 on m1.xlarge: 1.1M client writes/s on 288 nodes, ~3.8k/node; modern nodes ~5k-20k)")
+let throughput_db_cassandra_client_write_ops = throughput_db_cassandra_write_ops / 3
+
+@url("https://axonops.com/docs/data-platforms/cassandra/operations/performance/benchmarking")
+@description("Cassandra reads per node (~10k-50k ops/s)")
+let throughput_db_cassandra_read_ops = 25_000 operation/s
+
+# --- MongoDB (document) ---
+# highlight: MongoDB
+@url("https://www.mongodb.com/company/blog/through-the-looking-glass-analyzing-the-interplay-between-memory-disk-and-read-performance")
+@description("MongoDB YCSB ops/s per node (~10^4-10^5; cache-resident)")
+let throughput_db_mongodb_ops = 50_000 operation/s
+
+# --- PostgreSQL / MySQL (relational OLTP) ---
+# highlight: SQL write
+@url("https://docs.aws.amazon.com/whitepapers/latest/optimizing-mysql-on-ec2-using-amazon-ebs/mysql-benchmark-observations-and-considerations.html")
+@description("Relational OLTP write transactions per node, conservative (~10^3-10^4 txn/s; small instance, multi-statement txns, fsync per commit)")
+let throughput_db_sql_write_ops = 5_000 operation/s
+
+@url("https://docs.aws.amazon.com/whitepapers/latest/optimizing-mysql-on-ec2-using-amazon-ebs/mysql-benchmark-observations-and-considerations.html")
+@description("Relational OLTP reads per node, conservative (~10^4-10^5 queries/s; see _high for a big tuned box)")
+let throughput_db_sql_read_ops = 20_000 operation/s
+
+@url("https://www.cybertec-postgresql.com/en/postgres-scaling-advice-for-2021/")
+@description("PostgreSQL point reads on a large tuned server (~25k-32k TPS per core; ~1M on a high-end box, in-memory)")
+let throughput_db_sql_read_ops_high = 500_000 operation/s
+
+@url("https://www.cybertec-postgresql.com/en/postgres-scaling-advice-for-2021/")
+@description("PostgreSQL write transactions on NVMe, tuned (pgbench TPC-B-like: ~45k TPS on a 6-core workstation)")
+let throughput_db_sql_write_ops_high = 45_000 operation/s
+
+@url("https://www.scylladb.com/2023/10/24/sql-vs-nosql-at-scale-lee-atchinson-dor-laors-take")
+@description("Rule of thumb: mixed read/write load a relational primary handles before you reach for replicas or sharding (~10k-50k ops/s)")
+let throughput_db_sql_node_ceiling_ops = 50_000 operation/s
+
+# --- DynamoDB (managed; caps, per partition and per table) ---
+# highlight: DynamoDB
+@url("https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/ServiceQuotas.html")
+@description("DynamoDB writes per partition: 1,000 WCU/s (1 KB items)")
+let throughput_db_dynamodb_wcu = 1_000 dynamodb_wru/s
+
+@url("https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/ServiceQuotas.html")
+@description("DynamoDB strongly consistent reads per partition: 3,000 RCU/s (4 KB items; eventually consistent reads count half)")
+let throughput_db_dynamodb_rcu = 3_000 dynamodb_rru/s
+
+@url("https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/ServiceQuotas.html")
+@description("DynamoDB default per-table write throughput: 40,000 WCU/s (on-demand and provisioned; adjustable)")
+let throughput_db_dynamodb_table_wcu = 40_000 dynamodb_wru/s
+
+@url("https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/ServiceQuotas.html")
+@description("DynamoDB default per-table read throughput: 40,000 RCU/s (on-demand and provisioned; adjustable)")
+let throughput_db_dynamodb_table_rcu = 40_000 dynamodb_rru/s
+
+# --- Elasticsearch / OpenSearch (search index; values are documents/s) ---
+# highlight: Elasticsearch
+@url("https://www.elastic.co/blog/benchmarking-and-sizing-your-elasticsearch-cluster-for-logs-and-metrics")
+@description("Elasticsearch indexing per shard/node (~20k docs/s, batched bulk)")
+let throughput_db_elasticsearch_index_records = 20_000 record/s
+
+# --- ClickHouse (columnar OLAP; values are rows/s) ---
+# highlight: ClickHouse
+@url("https://clickhouse.com/docs/concepts/features/operations/insert/inserting-data")
+@description("ClickHouse batched inserts (~10^6 rows/s on one server, order of magnitude)")
+let throughput_db_clickhouse_insert_rows = 1_000_000 row/s
+
+@url("https://clickhouse.com/docs/best-practices/selecting-an-insert-strategy")
+@description("ClickHouse recommended insert query rate (~1 insert/s, each 10k-100k rows; use async inserts for many small writers)")
+let throughput_db_clickhouse_insert_requests = 1 request/s

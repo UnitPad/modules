@@ -1,0 +1,16 @@
+diff --git a/numbat-wasm/src/lib.rs b/numbat-wasm/src/lib.rs
+index 2ea0715..313176b 100644
+--- a/numbat-wasm/src/lib.rs
++++ b/numbat-wasm/src/lib.rs
+@@ -148,7 +148,10 @@ impl Numbat {
+                     &self.ctx.dimension_registry().clone(),
+                     true,
+                     true,
+-                    &numbat::FormatOptions::default(),
++                    &numbat::FormatOptions {
++                        significant_digits: 12,
++                        ..numbat::FormatOptions::default()
++                    },
+                 );
+                 output.push_str(&self.format(&result_markup, enable_indentation));
+ 

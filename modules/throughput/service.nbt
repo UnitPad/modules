@@ -1,0 +1,40 @@
+# Per-node service throughput calibration
+# Order-of-magnitude rates for one machine: service, cache, database, queue.
+# The database figures mirror throughput::db (modules can't import each other).
+# Import with:  use throughput::service    then use the throughput_service_* values
+# title: Throughput (Service)
+# checked: unverified
+# description: Per-node request rates for services, caches, databases and queues
+# vendor: aws, redis, kafka, mysql
+
+# highlight: service
+@url("https://www.techempower.com/benchmarks/")
+@description("Rule-of-thumb capacity per service node for business logic plus one database round trip (~10^3-10^4 requests/s); workload and hardware vary. Framework-only benchmarks reach 10^5-10^6 requests/s")
+let throughput_service_requests = 10_000 request/s
+
+# highlight: cache
+@url("https://redis.io/docs/latest/operate/oss_and_stack/management/optimization/benchmarks/")
+@description("Rule-of-thumb capacity per in-memory cache node (~10^5 operations/s); one Redis process without pipelining is ~150k, while multi-threaded memcached can go higher")
+let throughput_service_cache_ops = 100_000 operation/s
+
+@url("https://docs.aws.amazon.com/whitepapers/latest/optimizing-mysql-on-ec2-using-amazon-ebs/mysql-benchmark-observations-and-considerations.html")
+@description("Relational node reads, well-indexed, conservative (~10^4-10^5 QPS; same as throughput_db_sql_read_ops)")
+let throughput_service_db_read_ops = 20_000 operation/s
+
+# highlight: DB writes
+@url("https://docs.aws.amazon.com/whitepapers/latest/optimizing-mysql-on-ec2-using-amazon-ebs/mysql-benchmark-observations-and-considerations.html")
+@description("Relational node writes, conservative (~10^3-10^4/s; same as throughput_db_sql_write_ops)")
+let throughput_service_db_write_ops = 5_000 operation/s
+
+# highlight: Kafka
+@url("https://engineering.linkedin.com/kafka/benchmarking-apache-kafka-2-million-writes-second-three-cheap-machines")
+@description("Kafka broker, small messages (~10^5-10^6/s; LinkedIn: 821k 100-byte records/s from one producer)")
+let throughput_service_kafka_msgs = 500_000 message/s
+
+@url("https://www.confluent.io/blog/how-choose-number-topics-partitions-kafka-cluster/")
+@description("Kafka produce throughput per partition (Confluent: 10s of MB/s on one partition; plan ~10 MB/s)")
+let throughput_service_kafka_partition = 10 MB/s
+
+@url("https://www.confluent.io/blog/how-choose-number-topics-partitions-kafka-cluster/")
+@description("Kafka partitions per broker before availability suffers (Confluent: 2,000-4,000; KRaft clusters raise this)")
+let throughput_service_kafka_partitions_per_broker = 4_000

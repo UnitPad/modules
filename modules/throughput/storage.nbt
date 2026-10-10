@@ -1,0 +1,117 @@
+# Storage throughput and IOPS
+# Per-device sequential and random (4 KB) performance, plus link rates.
+# Import with:  use throughput::storage    then use the throughput_storage_* values
+# title: Throughput (Storage)
+# checked: unverified
+# description: Sequential and random (4 KB) throughput and IOPS for HDD, SSD, NVMe and tape
+# source: https://en.wikipedia.org/wiki/IOPS
+
+# --- HDD (7,200 RPM) ---
+# highlight: HDD seq
+@url("https://en.wikipedia.org/wiki/Hard_disk_drive")
+@description("HDD sequential read (~100-200 MB/s)")
+let throughput_storage_hdd_seq_read = 200 MB/s
+
+@url("https://en.wikipedia.org/wiki/Hard_disk_drive")
+@description("HDD sequential write (~100-200 MB/s)")
+let throughput_storage_hdd_seq_write = 200 MB/s
+
+# highlight: HDD 4K read
+@url("https://en.wikipedia.org/wiki/IOPS")
+@description("HDD random 4 KB read IOPS (Wikipedia: 73-79 for 7,200 RPM SATA; 10k RPM is ~140-150)")
+let throughput_storage_hdd_rand_read_iops = 80 IOPS
+
+@url("https://en.wikipedia.org/wiki/IOPS")
+@description("HDD random 4 KB write IOPS (7,200 RPM; same mechanics as reads)")
+let throughput_storage_hdd_rand_write_iops = 80 IOPS
+
+@url("https://en.wikipedia.org/wiki/IOPS")
+@description("HDD random 4 KB read throughput (throughput_storage_hdd_rand_read_iops × 4 KB)")
+let throughput_storage_hdd_rand_read = throughput_storage_hdd_rand_read_iops * 4 KiB/io -> MiB/s
+
+@url("https://en.wikipedia.org/wiki/IOPS")
+@description("HDD random 4 KB write throughput (throughput_storage_hdd_rand_write_iops × 4 KB)")
+let throughput_storage_hdd_rand_write = throughput_storage_hdd_rand_write_iops * 4 KiB/io -> MiB/s
+
+# --- SATA SSD ---
+# highlight: SATA seq
+@url("https://en.wikipedia.org/wiki/Solid-state_drive")
+@description("SATA SSD sequential read (~550 MB/s)")
+let throughput_storage_sata_ssd_seq_read = 550 MB/s
+
+@url("https://en.wikipedia.org/wiki/Solid-state_drive")
+@description("SATA SSD sequential write (~520 MB/s)")
+let throughput_storage_sata_ssd_seq_write = 520 MB/s
+
+# highlight: SATA 4K read
+@url("https://en.wikipedia.org/wiki/IOPS")
+@description("SATA SSD random 4 KB read IOPS (~100k)")
+let throughput_storage_sata_ssd_rand_read_iops = 100_000 IOPS
+
+@url("https://en.wikipedia.org/wiki/IOPS")
+@description("SATA SSD random 4 KB write IOPS (~90k)")
+let throughput_storage_sata_ssd_rand_write_iops = 90_000 IOPS
+
+@url("https://en.wikipedia.org/wiki/IOPS")
+@description("SATA SSD random 4 KB read throughput (throughput_storage_sata_ssd_rand_read_iops × 4 KB)")
+let throughput_storage_sata_ssd_rand_read = throughput_storage_sata_ssd_rand_read_iops * 4 KiB/io -> MiB/s
+
+@url("https://en.wikipedia.org/wiki/IOPS")
+@description("SATA SSD random 4 KB write throughput (throughput_storage_sata_ssd_rand_write_iops × 4 KB)")
+let throughput_storage_sata_ssd_rand_write = throughput_storage_sata_ssd_rand_write_iops * 4 KiB/io -> MiB/s
+
+# --- NVMe SSD (PCIe 5.0 x4) ---
+# highlight: NVMe seq
+@url("https://semiconductor.samsung.com/ssd/enterprise-ssd/pm1743/")
+@description("NVMe SSD sequential read (~14 GB/s, PCIe 5.0 x4; Samsung PM1743: up to 14,000 MB/s)")
+let throughput_storage_nvme_seq_read = 14 GB/s
+
+@url("https://en.wikipedia.org/wiki/Solid-state_drive")
+@description("NVMe SSD sequential write (~12 GB/s on fast consumer Gen5; many enterprise Gen5 drives list ~6-10 GB/s)")
+let throughput_storage_nvme_seq_write = 12 GB/s
+
+# highlight: NVMe 4K read
+@url("https://en.wikipedia.org/wiki/IOPS")
+@description("NVMe SSD random 4 KB read IOPS at high queue depth (~1M Gen4, 2M+ Gen5 enterprise; see _qd1 for a single thread)")
+let throughput_storage_nvme_rand_read_iops = 1_000_000 IOPS
+
+@url("https://en.wikipedia.org/wiki/IOPS")
+@description("NVMe SSD random 4 KB write IOPS, sustained (~200k-400k steady state; ~1M only in burst / fresh-out-of-box)")
+let throughput_storage_nvme_rand_write_iops = 300_000 IOPS
+
+# highlight: NVMe QD1
+@url("https://simplyblock.io/glossary/nvme-latency/")
+@description("NVMe random 4 KB read IOPS at queue depth 1 (~1 / 60 us latency, 10k-50k; what one synchronous thread sees)")
+let throughput_storage_nvme_rand_read_qd1_iops = 16_000 IOPS
+
+@url("https://en.wikipedia.org/wiki/IOPS")
+@description("NVMe SSD random 4 KB read throughput (throughput_storage_nvme_rand_read_iops × 4 KB)")
+let throughput_storage_nvme_rand_read = throughput_storage_nvme_rand_read_iops * 4 KiB/io -> MiB/s
+
+@url("https://en.wikipedia.org/wiki/IOPS")
+@description("NVMe SSD random 4 KB write throughput (throughput_storage_nvme_rand_write_iops × 4 KB)")
+let throughput_storage_nvme_rand_write = throughput_storage_nvme_rand_write_iops * 4 KiB/io -> MiB/s
+
+# --- Tape ---
+# highlight: tape
+@url("https://en.wikipedia.org/wiki/Linear_Tape-Open")
+@description("LTO-9 tape sequential (~400 MB/s)")
+let throughput_storage_tape_seq = 400 MB/s
+
+# --- Link rates ---
+# highlight: SATA III
+@url("https://en.wikipedia.org/wiki/Serial_ATA")
+@description("SATA III link rate (~600 MB/s, 6 Gbit/s)")
+let throughput_storage_interface_sata3 = 600 MB/s
+
+@url("https://en.wikipedia.org/wiki/Serial_Attached_SCSI")
+@description("SAS-3 link rate (~1.2 GB/s, 12 Gbit/s)")
+let throughput_storage_interface_sas3 = 1.2 GB/s
+
+@url("https://en.wikipedia.org/wiki/PCI_Express")
+@description("PCIe 4.0 x4 link (a Gen4 NVMe SSD, ~7.88 GB/s)")
+let throughput_storage_interface_pcie4_x4 = 7.88 GB/s
+
+@url("https://en.wikipedia.org/wiki/PCI_Express")
+@description("PCIe 5.0 x4 link (a Gen5 NVMe SSD, ~15.75 GB/s)")
+let throughput_storage_interface_pcie5_x4 = 15.75 GB/s

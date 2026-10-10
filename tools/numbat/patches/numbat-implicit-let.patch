@@ -1,0 +1,123 @@
+diff --git a/numbat/src/parser.rs b/numbat/src/parser.rs
+index ccbd88d..625e663 100644
+--- a/numbat/src/parser.rs
++++ b/numbat/src/parser.rs
+@@ -479,9 +479,17 @@ impl<'a> Parser<'a> {
+     }
+ 
+     fn statement(&mut self, tokens: &[Token<'a>]) -> Result<Statement<'a>> {
++        // `name = value` and `name: Type = value` define a variable, as `let` does: an identifier followed by a single `=` or
++        // by a `:` (a comparison, `==`, is its own token, a keyword is not an identifier, and no other statement begins `name :`).
++        let implicit_variable = self.peek(tokens).kind == TokenKind::Identifier
++            && tokens
++                .get(self.current + 1)
++                .is_some_and(|token| matches!(token.kind, TokenKind::Equal | TokenKind::Colon));
++
+         if !(self.peek(tokens).kind == TokenKind::At
+             || self.peek(tokens).kind == TokenKind::Unit
+             || self.peek(tokens).kind == TokenKind::Let
++            || implicit_variable
+             || self.peek(tokens).kind == TokenKind::Fn
+             || self.decorator_stack.is_empty())
+         {
+@@ -491,7 +499,7 @@ impl<'a> Parser<'a> {
+             });
+         }
+ 
+-        if self.match_exact(tokens, TokenKind::Let).is_some() {
++        if self.match_exact(tokens, TokenKind::Let).is_some() || implicit_variable {
+             self.parse_variable(tokens, true)
+                 .map(Statement::DefineVariable)
+         } else if let Some(fn_token) = self.match_exact(tokens, TokenKind::Fn) {
+@@ -2603,6 +2611,36 @@ mod tests {
+         should_fail(&["1 - > 2", "1 -> -> 2"]);
+     }
+ 
++    #[test]
++    fn variable_definition_without_let() {
++        // `name = value` and `let name = value` define the same variable.
++        for (bare, with_let) in [
++            ("foo = 1", "let foo = 1"),
++            ("foo=1", "let foo=1"),
++            ("x = 1 + 2 * 3", "let x = 1 + 2 * 3"),
++            ("rate = 5 m / s", "let rate = 5 m / s"),
++            ("x: Length = 3 m", "let x: Length = 3 m"),
++        ] {
++            let a = parse(bare, 0).expect("parse error").replace_spans();
++            let b = parse(with_let, 0).expect("parse error").replace_spans();
++            assert_eq!(a, b, "{bare} should parse like {with_let}");
++            assert!(matches!(a[0], Statement::DefineVariable(_)));
++        }
++
++        // A comparison is not a definition, and neither is a keyword.
++        parse_as_expression(
++            &["x == y"],
++            binop!(identifier!("x"), Equal, identifier!("y")),
++        );
++        should_fail(&["to = 1", "x = ", "x: Length"]);
++
++        // Decorators apply to it as they do to `let`.
++        should_fail_with(
++            &["@aliases(foo, f: short) foobar = 1"],
++            ParseErrorKind::DecoratorsWithPrefixOnLetDefinition,
++        );
++    }
++
+     #[test]
+     fn variable_definition() {
+         parse_as(
+@@ -2696,9 +2734,11 @@ mod tests {
+             ParseErrorKind::ExpectedEqualOrColonAfterLetIdentifier,
+         );
+ 
++        // `foo = 2` is a definition now (see `variable_definition_without_let`); an equal sign after anything that is not a
++        // lone name is still an error.
+         should_fail_with(
+-            &["foo = 2"],
+-            ParseErrorKind::TrailingEqualSign("foo".into()),
++            &["foo + 1 = 2"],
++            ParseErrorKind::TrailingEqualSign("foo+1".into()),
+         );
+ 
+         should_fail(&["let x²=2", "let x+y=2", "let 3=5", "let x=", "let x"]);
+@@ -3808,13 +3848,10 @@ mod tests {
+         Expected one of: number, identifier, parenthesized expression, struct instantiation, list - ParseError { kind: ExpectedPrimary, span: Span { start: ByteIndex(63), end: ByteIndex(67), code_source_id: 0 } }
+         "###);
+ 
+-        // #260
+-        assert_snapshot!(snap_parse(
+-            "x = 3"), @r###"
+-        Successfully parsed:
+-        Expression(Identifier(Span { start: ByteIndex(0), end: ByteIndex(1), code_source_id: 0 }, "x"))
+-        Errors encountered:
+-        Trailing '=' sign. Use `let x = …` if you intended to define a new constant. - ParseError { kind: TrailingEqualSign("x"), span: Span { start: ByteIndex(2), end: ByteIndex(3), code_source_id: 0 } }
+-        "###);
++        // #260: a lone name before `=` used to be an error asking for `let`; it is a definition now.
++        assert_eq!(
++            parse("x = 3", 0).expect("parse error").replace_spans(),
++            parse("let x = 3", 0).expect("parse error").replace_spans()
++        );
+     }
+ }
+diff --git a/numbat/tests/interpreter.rs b/numbat/tests/interpreter.rs
+index 192295a..5aacc34 100644
+--- a/numbat/tests/interpreter.rs
++++ b/numbat/tests/interpreter.rs
+@@ -181,6 +181,17 @@ fn simple_value() {
+     expect_output("inf", "inf");
+ }
+ 
++#[test]
++fn test_variable_definition_without_let() {
++    // `name = value` defines a variable as `let name = value` does.
++    expect_output("x = 3 m\nx * 2", "6 m");
++    expect_output("let y = 3 m\ny * 2", "6 m");
++    expect_output("x: Length = 3 m\nx * 2", "6 m");
++    expect_output("a = 2\nb = a * 5\nb", "10");
++    expect_output("x = 3\nx == 3", "true");
++    expect_failure("to = 3", "Expected");
++}
++
+ #[test]
+ fn test_factorial() {
+     expect_output("0!", "1");

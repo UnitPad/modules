@@ -1,0 +1,67 @@
+# Per-operation latencies of common infrastructure, as seen by a client in-region
+# These are the numbers you add up in a request's latency budget. Medians unless noted.
+# Import with:  use latency::service    then use the latency_service_* values
+# title: Latency (service)
+# checked: unverified
+# description: Typical request latencies: Redis, SQL, DynamoDB, S3, Kafka, etcd/Raft, Lambda cold start
+# vendor: aws, redis, kafka, etcd
+
+# highlight: Redis GET
+@url("https://redis.io/docs/latest/operate/oss_and_stack/management/optimization/benchmarks/")
+@description("Redis GET/SET p50 in-AZ (~0.1-0.2 ms server-side on loopback plus one same-AZ RTT)")
+let latency_service_redis_get = 0.3 ms
+
+@url("https://www.cybertec-postgresql.com/en/postgres-scaling-advice-for-2021/")
+@description("Relational point query by primary key, cached, in-AZ (~1 ms; estimate: tens of us of work plus RTT and driver overhead)")
+let latency_service_sql_point_query = 1 ms
+
+# highlight: DynamoDB
+@url("https://aws.amazon.com/dynamodb/")
+@description("DynamoDB GetItem/PutItem (AWS: single-digit millisecond at any scale)")
+let latency_service_dynamodb = 5 ms
+
+# highlight: S3 first byte
+@url("https://docs.aws.amazon.com/AmazonS3/latest/userguide/optimizing-performance.html")
+@description("S3 Standard small-object / first-byte latency (AWS: roughly 100-200 ms)")
+let latency_service_s3_first_byte = 150 ms
+
+@url("https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-performance.html")
+@description("S3 Express One Zone first-byte latency (AWS: consistent single-digit ms, up to 10x faster than Standard)")
+let latency_service_s3_express_first_byte = 5 ms
+
+# highlight: Kafka e2e
+@url("https://engineering.linkedin.com/kafka/benchmarking-apache-kafka-2-million-writes-second-three-cheap-machines")
+@description("Kafka produce-to-consume end to end, p50 (LinkedIn: 2 ms p50, 3 ms p99, 14 ms p99.9)")
+let latency_service_kafka_e2e = 2 ms
+
+@url("https://engineering.linkedin.com/kafka/benchmarking-apache-kafka-2-million-writes-second-three-cheap-machines")
+@description("Kafka produce-to-consume end to end, p99.9 (LinkedIn benchmark)")
+let latency_service_kafka_e2e_p999 = 14 ms
+
+@url("https://developer.confluent.io/learn/kafka-performance/")
+@description("Kafka produce-to-consume end to end, p99 (Confluent benchmark: 5 ms at 200 MB/s, 3 brokers, 1 KB messages, acks=all, min.insync.replicas=2, fsync off)")
+let latency_service_kafka_e2e_p99 = 5 ms
+
+# The produce / publish / commit / fetch split is config- and load-dependent (acks,
+# ISR spread); only the config defaults below are documented bounds. See Confluent's
+# breakdown: https://www.confluent.io/blog/configure-kafka-to-minimize-latency
+@url("https://kafka.apache.org/documentation/#consumerconfigs")
+@description("Kafka consumer fetch long-poll bound: fetch.max.wait.ms default (the broker waits up to this for fetch.min.bytes)")
+let latency_service_kafka_fetch_max_wait = 500 ms
+
+@url("https://kafka.apache.org/documentation/#brokerconfigs")
+@description("Kafka ISR eviction threshold: replica.lag.time.max.ms default (a follower lagging longer is dropped from the in-sync replicas)")
+let latency_service_kafka_replica_lag_max = 30 s
+
+# highlight: consensus write
+@url("https://etcd.io/docs/v3.5/op-guide/performance/")
+@description("Consensus (Raft/etcd) write, light load: one member RTT plus fsync (etcd benchmark: 1.6 ms avg)")
+let latency_service_consensus_write = 1.6 ms
+
+@url("https://etcd.io/docs/v3.5/op-guide/performance/")
+@description("etcd linearizable read, single connection (etcd benchmark: 0.7 ms; serializable 0.3 ms)")
+let latency_service_consensus_read = 0.7 ms
+
+@url("https://aws.amazon.com/blogs/compute/operating-lambda-performance-optimization-part-1/")
+@description("AWS Lambda cold start (AWS: under 100 ms to over 1 s; under 1% of invocations)")
+let latency_service_lambda_cold_start = 500 ms

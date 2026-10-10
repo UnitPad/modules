@@ -1,0 +1,64 @@
+{
+  "name": "@unitpad/modules",
+  "version": "0.1.0",
+  "description": "The numbers UnitPad sheets import with `use`: latencies, throughputs, sizes, prices and limits, each with its source.",
+  "license": "MIT",
+  "type": "module",
+  "files": [
+    "modules",
+    "unitpad.json"
+  ],
+  "exports": {
+    "./package.json": "./package.json",
+    "./unitpad.json": "./unitpad.json",
+    "./modules/*": "./modules/*"
+  },
+  "keywords": [
+    "unitpad",
+    "numbat",
+    "units",
+    "latency",
+    "throughput",
+    "capacity-planning"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/UnitPad/modules.git"
+  },
+  "homepage": "https://github.com/UnitPad/modules#readme",
+  "bugs": {
+    "url": "https://github.com/UnitPad/modules/issues"
+  },
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "test": "node --test tools/*.test.mjs",
+    "lint": "eslint .",
+    "lint:md": "markdownlint-cli2",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "api": "node tools/api.mjs",
+    "api:update": "node tools/api.mjs --update",
+    "api:release": "node tools/api.mjs --release",
+    "values": "node tools/values.mjs",
+    "values:update": "node tools/values.mjs --update",
+    "values:release": "node tools/values.mjs --release",
+    "numbat": "node tools/install-numbat.mjs",
+    "check": "npm run lint && npm run lint:md && npm run format:check && npm test && node tools/check-docs.mjs && node tools/style.mjs && node tools/api.mjs && node tools/values.mjs && node tools/pack-check.mjs",
+    "check:docs": "node tools/check-docs.mjs",
+    "style": "node tools/style.mjs",
+    "check:pack": "node tools/pack-check.mjs",
+    "stale": "node tools/stale.mjs",
+    "links": "node tools/links.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.12.0",
+    "globals": "^17.13.0",
+    "markdownlint-cli2": "^0.23.3",
+    "prettier": "^3.9.9"
+  }
+}

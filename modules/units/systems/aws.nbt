@@ -1,0 +1,21 @@
+# Shared units for AWS metering. In every session (via `units::systems`), not importable.
+# title: Shared units (AWS)
+# description: DynamoDB read and write request units
+
+# DynamoDB read and write request units: what AWS meters, prices and caps, not raw
+# API calls (item size and consistency can make one call consume several). Shared
+# so `cost` prices and `throughput::db` caps multiply. A capacity unit (RCU/WCU)
+# is one request unit per second.
+dimension DynamodbReadRequestUnit
+
+@name("DynamoDB read request unit")
+@url("https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/read-write-operations.html")
+@aliases(dynamodb_rru)
+unit dynamodb_read_request_unit: DynamodbReadRequestUnit
+
+dimension DynamodbWriteRequestUnit
+
+@name("DynamoDB write request unit")
+@url("https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/read-write-operations.html")
+@aliases(dynamodb_wru)
+unit dynamodb_write_request_unit: DynamodbWriteRequestUnit
