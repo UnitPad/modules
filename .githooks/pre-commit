@@ -1,0 +1,47 @@
+#!/bin/sh
+# Pre-commit: the quick checks, on what is staged, so a commit never carries what CI would reject. The slow ones (the tests, and the
+# values check that runs every module in `numbat`) stay in `npm run check` and CI. The style check takes about 20 seconds, so it
+# runs only when a module is staged.
+#
+# This file is version-controlled. `npm install` points git at this folder (`prepare` in package.json:
+# `git config core.hooksPath .githooks`). Skip it once with `git commit --no-verify`.
+set -e
+cd "$(git rev-parse --show-toplevel)"
+
+staged() { git diff --cached --name-only --diff-filter=ACMR -- "$@"; }
+
+formatted=$(staged '*.mjs' '*.js' '*.json' '*.jsonc' '*.yml' '*.yaml')
+scripts=$(staged '*.mjs' '*.js')
+docs=$(staged '*.md')
+modules=$(staged 'modules/*' 'unitpad.json' 'api.json')
+
+if [ -n "$formatted" ]; then
+  echo "pre-commit: formatting"
+  # shellcheck disable=SC2086
+  npx --no-install prettier --check --ignore-unknown $formatted
+fi
+
+if [ -n "$scripts" ]; then
+  echo "pre-commit: eslint"
+  # shellcheck disable=SC2086
+  npx --no-install eslint --no-warn-ignored $scripts
+fi
+
+if [ -n "$docs" ]; then
+  echo "pre-commit: markdown"
+  npx --no-install markdownlint-cli2
+  echo "pre-commit: documents"
+  node tools/check-docs.mjs >/dev/null || { node tools/check-docs.mjs | grep -v '^ok'; exit 1; }
+fi
+
+if [ -n "$modules" ] || [ -n "$(staged package.json)" ]; then
+  echo "pre-commit: names and version"
+  node tools/api.mjs
+  echo "pre-commit: package contents"
+  node tools/pack-check.mjs
+fi
+
+if [ -n "$(staged 'modules/*.nbt')" ]; then
+  echo "pre-commit: style (about 20 seconds)"
+  node tools/style.mjs | grep -v '^ok' && exit 1 || true
+fi
