@@ -1,0 +1,94 @@
+name: Something is wrong or out of date
+description: A value, function or unit in a module disagrees with its source, or its source has changed
+title: '[Correction] '
+labels: ['data']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this when a value, function or unit in a module is wrong, or the page it comes from has changed.
+
+        > [!IMPORTANT]
+        > To add something new, open a pull request (see [CONTRIBUTING.md](https://github.com/UnitPad/modules/blob/main/CONTRIBUTING.md)). For something broken in the app, use the [Problem report](https://github.com/UnitPad/unitpad-feedback/issues/new?template=bug.yml) form of UnitPad.
+
+        If you came from UnitPad, **Open feedback: Module problem** or **Flag module problem** filled in the module, the name, the version and the build. Check them.
+
+        Everything you post here is public.
+
+  - type: textarea
+    id: what-is-wrong
+    attributes:
+      label: What is wrong?
+      description: What UnitPad shows or does, and what it should be.
+    validations:
+      required: true
+
+  - type: input
+    id: source
+    attributes:
+      label: The source page
+      description: The page that gives the right figure.
+      placeholder: e.g. https://aws.amazon.com/s3/pricing/
+    validations:
+      required: true
+
+  - type: textarea
+    id: figure
+    attributes:
+      label: What the page says
+      description: The figure, formula or table row as the page gives it. Keep it short, so a reviewer can find it without searching.
+    validations:
+      required: true
+
+  - type: input
+    id: name
+    attributes:
+      label: The name
+      description: 'Filled in for you by **Flag module problem**. The value, function or unit as a sheet writes it.'
+      placeholder: e.g. throughput_s3_get_requests_per_prefix
+    validations:
+      required: true
+
+  - type: input
+    id: shown
+    attributes:
+      label: What UnitPad shows
+      description: 'Filled in for you by **Flag module problem**, for a value.'
+      placeholder: e.g. 5500 request/s
+    validations:
+      required: false
+
+  - type: input
+    id: module
+    attributes:
+      label: The module
+      description: 'Filled in for you by **Open feedback: Module problem** and **Flag module problem**. The module a sheet imports.'
+      placeholder: e.g. throughput::s3
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Modules version
+      description: 'Filled in for you by **Open feedback: Module problem** and **Flag module problem**. The version of `@unitpad/modules`.'
+      placeholder: e.g. 0.1.1
+    validations:
+      required: false
+
+  - type: input
+    id: build
+    attributes:
+      label: UnitPad build
+      description: 'Filled in for you by **Open feedback: Module problem** and **Flag module problem**.'
+      placeholder: e.g. 2026-06-02 14:03 UTC (4c1fddc)
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Before posting
+      options:
+        - label: I have checked this against the source page I gave.
+          required: true

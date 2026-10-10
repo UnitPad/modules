@@ -13,7 +13,7 @@ written.
 | `modules/units/systems/`: the shared count units | Problems with how the app shows or calculates a number. Report them at [`UnitPad/unitpad-feedback`](https://github.com/UnitPad/unitpad-feedback). |
 | `unitpad.json`: what every sheet starts with, and the order and headings of the Modules menu | |
 
-A wrong, outdated or missing number belongs here. Open an issue with the form "A number is wrong or out of date", or send a pull
+A wrong, outdated or missing value, function or unit belongs here. Open an issue with the form "Something is wrong or out of date", or send a pull
 request.
 
 ## Licence of a contribution

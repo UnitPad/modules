@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Something broken in UnitPad
+    url: https://github.com/UnitPad/unitpad-feedback/issues/new?template=bug.yml
+    about: The app itself, not the numbers in a module. This goes to the feedback repository.
+  - name: Question
+    url: https://github.com/UnitPad/unitpad-feedback/discussions/new?category=q-a
+    about: Ask a question, or share a sheet.
