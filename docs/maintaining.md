@@ -64,4 +64,4 @@ The release workflow needs a secret `NPM_TOKEN`: a granular npm token that may p
 - Issues opened from the lists of stale modules and dead sources. The lists are in the summary of each run.
 - A git hook that runs `npm run check` before a commit.
 - Publishing without a stored token, through npm trusted publishing.
-- None of the workflows has run yet, because the repository is not on GitHub. Expect to fix small things in the first runs.
+- A run of the release workflow. The check workflow has run and passes. The release workflow has not run, so expect to fix small things in its first run.
