@@ -49,8 +49,8 @@ The release workflow needs a secret `NPM_TOKEN`: a granular npm token that may p
 ## Make a release
 
 1. Choose the version by the table in `CONTRIBUTING.md`. `node tools/api.mjs` tells you the least step that the names need.
-2. Run `node tools/api.mjs --update` and `node tools/values.mjs --update`. They write the names and the values of this release to
-   `api.json` and `values.json`. Commit them with the version.
+2. Run `npm run api:update` and `npm run values:update`. They write the names and the values of this release to `api.json` and
+   `values.json`, in the formatter's layout. Commit them with the version.
 3. Run `npm run check`. It must pass.
 4. Tag `vX.Y.Z`, equal to the version in `package.json`, and push the tag.
 5. The release workflow publishes the tag with npm provenance. A published version then names the commit it came from. Nobody publishes

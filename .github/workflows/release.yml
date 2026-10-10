@@ -44,6 +44,8 @@ jobs:
         env:
           REQUIRE_NUMBAT: '1'
 
+      # Trusted publishing needs npm 11.5.1 or newer, and Node 22 ships npm 10. The version is pinned, as the actions are.
+      - run: npm install -g npm@11.21.0
+
+      # No token: npm trusts this workflow of this repository (the package's settings on npmjs.com), through `id-token: write`.
       - run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
