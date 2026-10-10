@@ -44,7 +44,8 @@ edited by hand.
 | `.github/workflows/maintenance.yml` | Each Monday | Lists the modules that are due a check, and fails when a source no longer answers |
 | `.github/dependabot.yml` | Each Monday | Opens pull requests for npm and Actions updates |
 
-The release workflow needs a secret `NPM_TOKEN`: a granular npm token that may publish `@unitpad/modules`.
+The release workflow holds no secret. The package's settings on npmjs.com name `UnitPad/modules` and `release.yml` as its trusted
+publisher, so npm accepts the publish from that workflow alone. If a release fails with an authentication error, check that setting first.
 
 ## Make a release
 
@@ -64,4 +65,3 @@ The release workflow needs a secret `NPM_TOKEN`: a granular npm token that may p
 - A check that the checksums in `numbat-version.json` match a second source. They come from the release on GitHub, when the version was chosen.
 - Issues opened from the lists of stale modules and dead sources. The lists are in the summary of each run.
 - A git hook that runs `npm run check` before a commit.
-- Publishing without a stored token, through npm trusted publishing.
