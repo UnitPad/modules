@@ -1,5 +1,5 @@
 node_modules
-package-lock.json
+pnpm-lock.yaml
 # prose and modules are written by hand: not for a code formatter
 *.md
 *.nbt

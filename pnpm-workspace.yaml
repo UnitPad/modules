@@ -1,0 +1,7 @@
+# No version younger than two weeks, in minutes (14 days), for direct and transitive dependencies alike.
+minimumReleaseAge: 20160
+# The two lower bounds that package.json already asked for before this setting existed, one exact version each: eslint 10.12.0 matures
+# on 2026-10-16 and globals 17.13.0 on 2026-10-15, after which these lines do nothing and are deleted.
+minimumReleaseAgeExclude:
+  - eslint@10.12.0
+  - globals@17.13.0
