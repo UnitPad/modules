@@ -1,17 +1,9 @@
+# Only the Actions are updated here: it bumps the commit that each action is pinned to, and the version in the comment beside it.
+# There is no `npm` block on purpose. Dependabot's documentation lists pnpm 7 to 10, and this repository uses pnpm 12, whose lockfile it
+# may not read; it also ignores `minimumReleaseAge`, so it could propose a version younger than two weeks. The packages are updated by
+# hand, as `docs/maintaining.md` says.
 version: 2
 updates:
-  - package-ecosystem: npm
-    directory: /
-    schedule:
-      interval: weekly
-      day: monday
-    open-pull-requests-limit: 5
-    groups:
-      # Minor and patch together: they are one review. A major stays its own pull request.
-      minor-and-patch:
-        patterns: ['*']
-        update-types: ['minor', 'patch']
-
   - package-ecosystem: github-actions
     directory: /
     schedule:
