@@ -39,11 +39,13 @@ it. The numbers are facts. The descriptions are your words, so paraphrase the so
 
 ## What you can run
 
+The packages are installed with [pnpm](https://pnpm.io), at the version that `packageManager` in `package.json` names. With Node 22 or newer, `corepack enable pnpm` makes that version the one you get. The settings of pnpm are in `pnpm-workspace.yaml`: no dependency version younger than 14 days is installed.
+
 | Command | What it does |
 |---|---|
 | `node tools/pack-check.mjs` | Checks that a release would hold only the package's files |
-| `npm ci`, then `npm run check` | Runs everything below, the formatter, the linters and the tests |
-| `npm test` | Runs the tests of the checks below |
+| `pnpm install --frozen-lockfile`, then `pnpm run check` | Runs everything below, the formatter, the linters and the tests |
+| `pnpm test` | Runs the tests of the checks below |
 | `node tools/check-docs.mjs` | Checks the documents here against [`docs/writing.md`](docs/writing.md) |
 | `node tools/install-numbat.mjs` | Installs the official `numbat` program, at the pinned version and checksum, into `.numbat/` |
 | `node tools/style.mjs` | Holds every module to the rules of `docs/style.md` |
@@ -52,12 +54,12 @@ it. The numbers are facts. The descriptions are your words, so paraphrase the so
 | `node tools/stale.mjs` | Lists the modules that are older than a year or `unverified` |
 | `node tools/links.mjs` | Lists the sources that no longer answer |
 
-Each needs only Node. `npm run check` also holds every module to the rules of [`docs/style.md`](docs/style.md). A reviewer reads for the numbers and their
+Each needs only Node, and pnpm for the first two. `pnpm run check` also holds every module to the rules of [`docs/style.md`](docs/style.md). A reviewer reads for the numbers and their
 sources.
 
 ## The commit hook
 
-`npm install` points git at `.githooks/`. Its `pre-commit` runs the quick checks on what you staged: formatting, ESLint, markdownlint,
+`pnpm install` points git at `.githooks/`. Its `pre-commit` runs the quick checks on what you staged: formatting, ESLint, markdownlint,
 the documents check, the names and version check, and the package contents. When a module is staged, it also runs the style check,
 which takes about 20 seconds. The tests and the values check run in CI. Skip the hook once with `git commit --no-verify`.
 

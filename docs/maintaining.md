@@ -39,20 +39,24 @@ edited by hand.
 
 | File | Runs | What it does |
 |---|---|---|
-| `.github/workflows/check.yml` | Each pull request and each push to `main` | `npm ci`, installs `numbat`, then `npm run check` |
-| `.github/workflows/release.yml` | A tag `vX.Y.Z` | The same check, then the tag, `api.json` and `values.json` must match the version, then `npm publish` with provenance |
+| `.github/workflows/check.yml` | Each pull request and each push to `main` | `pnpm install --frozen-lockfile`, installs `numbat`, then `pnpm run check` |
+| `.github/workflows/release.yml` | A tag `vX.Y.Z` | The same check, then the tag, `api.json` and `values.json` must match the version, then `npm publish` with provenance (npm, not pnpm: see below) |
 | `.github/workflows/maintenance.yml` | Each Monday | Lists the modules that are due a check, and fails when a source no longer answers |
-| `.github/dependabot.yml` | Each Monday | Opens pull requests for npm and Actions updates |
+| `.github/dependabot.yml` | Each Monday | Opens pull requests for the packages and Actions updates |
 
 The release workflow holds no secret. The package's settings on npmjs.com name `UnitPad/modules` and `release.yml` as its trusted
 publisher, so npm accepts the publish from that workflow alone. If a release fails with an authentication error, check that setting first.
 
+The packages are installed and checked with pnpm, and the release publishes with `npm publish` on purpose. Trusted publishing and provenance are
+features of the npm command line, and the trust on npmjs.com is tied to the file name `release.yml`. The workflow installs npm 11.21.0 for it,
+because Node 22 ships npm 10. Keep the file name, the job name, the tag trigger and `id-token: write` as they are.
+
 ## Make a release
 
 1. Choose the version by the table in `CONTRIBUTING.md`. `node tools/api.mjs` tells you the least step that the names need.
-2. Run `npm run api:update` and `npm run values:update`. They write the names and the values of this release to `api.json` and
+2. Run `pnpm run api:update` and `pnpm run values:update`. They write the names and the values of this release to `api.json` and
    `values.json`, in the formatter's layout. Commit them with the version.
-3. Run `npm run check`. It must pass.
+3. Run `pnpm run check`. It must pass.
 4. Tag `vX.Y.Z`, equal to the version in `package.json`, and push the tag.
 5. The release workflow publishes the tag with npm provenance. A published version then names the commit it came from. Nobody publishes
    from a laptop. npm takes a minute or two to show the new version.
