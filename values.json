@@ -1,5 +1,5 @@
 {
-  "version": "0.1.1",
+  "version": "0.1.2",
   "numbat": "1.24.0",
   "modules": {
     "availability": {
@@ -34,6 +34,39 @@
         }
       },
       "functions": {
+        "availability_budget_consumed": {
+          "signature": "fn availability_budget_consumed(burn: Scalar, window: Time, period: Time) -> Scalar",
+          "description": "Fraction of the error budget used when a burn rate holds for a window: burn * window / period. Workbook example: 36 times over 1 hour in a 30-day period uses 5%",
+          "examples": [
+            {
+              "code": "availability_budget_consumed(36, 1 hour, 30 days)",
+              "value": "0.05",
+              "type": "Scalar"
+            }
+          ]
+        },
+        "availability_burn_rate": {
+          "signature": "fn availability_burn_rate(error_rate: Scalar, slo: Scalar) -> Scalar",
+          "description": "Burn rate: how fast, relative to the SLO, a service uses its error budget. It is error_rate / (1 - slo), with error_rate from 0 to 1 (pass 0.0072 or 0.72%, not 0.72) and slo as 0.9995 or 99.95%. A burn rate of 1 uses exactly the whole budget over the SLO period. Unreliable at low traffic: one failed request can give a very high burn rate",
+          "examples": [
+            {
+              "code": "availability_burn_rate(0.72%, 99.95%)",
+              "value": "14.4",
+              "type": "Scalar"
+            }
+          ]
+        },
+        "availability_burn_threshold": {
+          "signature": "fn availability_burn_threshold(consumed: Scalar, window: Time, period: Time) -> Scalar",
+          "description": "Burn rate at which an alert window uses a given fraction of the budget: consumed * period / window, the formula of availability_budget_consumed solved for the burn rate. Workbook Table 5-8: 2% in 1 hour of a 30-day period is 14.4, and 5% in 6 hours is 6",
+          "examples": [
+            {
+              "code": "availability_burn_threshold(2%, 1 hour, 30 days)",
+              "value": "14.4",
+              "type": "Scalar"
+            }
+          ]
+        },
         "availability_downtime_month": {
           "signature": "fn availability_downtime_month(a: Scalar) -> Time",
           "description": "Average downtime per month at availability fraction a (0 ≤ a ≤ 1; pass 0.999 or 99.9%, not 99.9), using Numbat's average month unit. 99.9% is ~44 min, 99.99% is ~4.4 min",
@@ -53,6 +86,17 @@
               "code": "availability_downtime_year(0.999)",
               "value": "0.001 yr",
               "type": "Time"
+            }
+          ]
+        },
+        "availability_from_mtbf": {
+          "signature": "fn availability_from_mtbf(mtbf: Time, mttr: Time) -> Scalar",
+          "description": "Availability estimated from mean time between failures and mean time to recover: mtbf / (mtbf + mttr). AWS example: an MTBF of 150 days and an MTTR of 1 hour is about 99.97%",
+          "examples": [
+            {
+              "code": "availability_from_mtbf(150 days, 1 hour)",
+              "value": "0.999722",
+              "type": "Scalar"
             }
           ]
         },

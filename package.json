@@ -1,6 +1,6 @@
 {
   "name": "@unitpad/modules",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "The numbers UnitPad sheets import with `use`: latencies, throughputs, sizes, prices and limits, each with its source.",
   "license": "MIT",
   "type": "module",

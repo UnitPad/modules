@@ -1,5 +1,5 @@
 {
-  "version": "0.1.1",
+  "version": "0.1.2",
   "modules": {
     "availability": {
       "prelude": false,
@@ -13,8 +13,12 @@
         "availability_s3_sla"
       ],
       "functions": [
+        "availability_budget_consumed",
+        "availability_burn_rate",
+        "availability_burn_threshold",
         "availability_downtime_month",
         "availability_downtime_year",
+        "availability_from_mtbf",
         "availability_nines",
         "availability_parallel",
         "availability_serial"

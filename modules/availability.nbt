@@ -1,11 +1,11 @@
 # Availability and durability
-# Nines, downtime budgets, composing components, and real failure rates.
+# Nines, downtime budgets, composing components, error budget burn rate, and real failure rates.
 # availability_serial / availability_parallel assume independent failures;
 # correlated failures (same rack, AZ, deploy, config push) make reality worse.
 # Import with:  use availability    then use the availability_* values and functions
 # title: Availability
 # checked: unverified
-# description: Nines and downtime budgets, serial/parallel composition, disk AFR, S3/EC2 durability and SLAs
+# description: Nines and downtime budgets, serial/parallel composition, MTBF/MTTR, error budget burn rate, disk AFR, S3/EC2 durability and SLAs
 # vendor: aws, backblaze
 
 @url("https://en.wikipedia.org/wiki/High_availability")
@@ -23,15 +23,36 @@ fn availability_downtime_year(a: Scalar) -> Time = (1 - a) * 1 year
 @example("availability_downtime_month(0.999)")
 fn availability_downtime_month(a: Scalar) -> Time = (1 - a) * 1 month
 
-@url("https://en.wikipedia.org/wiki/Reliability_engineering")
+@url("https://docs.aws.amazon.com/wellarchitected/latest/reliability-pillar/availability.html")
 @description("Availability of two components in series (both must work): multiply their availability fractions a and b, each from 0 to 1")
 @example("availability_serial(0.99, 0.999)")
 fn availability_serial(a: Scalar, b: Scalar) -> Scalar = a * b
 
-@url("https://en.wikipedia.org/wiki/Reliability_engineering")
+@url("https://docs.aws.amazon.com/wellarchitected/latest/reliability-pillar/availability.html")
 @description("Availability of n independent replicas where any one suffices: 1 - (1 - a)^n. Pass availability a from 0 to 1 and a nonnegative replica count n")
 @example("availability_parallel(0.99, 3)")
 fn availability_parallel(a: Scalar, n: Scalar) -> Scalar = 1 - (1 - a)^n
+
+@url("https://docs.aws.amazon.com/wellarchitected/latest/reliability-pillar/availability.html")
+@description("Availability estimated from mean time between failures and mean time to recover: mtbf / (mtbf + mttr). AWS example: an MTBF of 150 days and an MTTR of 1 hour is about 99.97%")
+@example("availability_from_mtbf(150 days, 1 hour)")
+fn availability_from_mtbf(mtbf: Time, mttr: Time) -> Scalar = mtbf / (mtbf + mttr)
+
+# --- Error budget and burn rate (Google SRE Workbook, chapter 5) ---
+@url("https://sre.google/workbook/alerting-on-slos/")
+@description("Burn rate: how fast, relative to the SLO, a service uses its error budget. It is error_rate / (1 - slo), with error_rate from 0 to 1 (pass 0.0072 or 0.72%, not 0.72) and slo as 0.9995 or 99.95%. A burn rate of 1 uses exactly the whole budget over the SLO period. Unreliable at low traffic: one failed request can give a very high burn rate")
+@example("availability_burn_rate(0.72%, 99.95%)")
+fn availability_burn_rate(error_rate: Scalar, slo: Scalar) -> Scalar = error_rate / (1 - slo)
+
+@url("https://sre.google/workbook/alerting-on-slos/")
+@description("Fraction of the error budget used when a burn rate holds for a window: burn * window / period. Workbook example: 36 times over 1 hour in a 30-day period uses 5%")
+@example("availability_budget_consumed(36, 1 hour, 30 days)")
+fn availability_budget_consumed(burn: Scalar, window: Time, period: Time) -> Scalar = burn * window / period
+
+@url("https://sre.google/workbook/alerting-on-slos/")
+@description("Burn rate at which an alert window uses a given fraction of the budget: consumed * period / window, the formula of availability_budget_consumed solved for the burn rate. Workbook Table 5-8: 2% in 1 hour of a 30-day period is 14.4, and 5% in 6 hours is 6")
+@example("availability_burn_threshold(2%, 1 hour, 30 days)")
+fn availability_burn_threshold(consumed: Scalar, window: Time, period: Time) -> Scalar = consumed * period / window
 
 # --- Measured failure rates ---
 # highlight: HDD AFR
