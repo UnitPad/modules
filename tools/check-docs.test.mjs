@@ -1,4 +1,4 @@
-/** The documents check (`check-docs.mjs`), held to its own rules: what it passes, and what it fails. Run with `npm test`. */
+/** The documents check (`check-docs.mjs`), held to its own rules: what it passes, and what it fails. Run with `pnpm test`. */
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { checkDocument, MAX_WORDS } from './check-docs.mjs';
@@ -40,6 +40,7 @@ test('fails a heading that is a question, and a banned term', () => {
 test('requires UnitPad by name, and nothing of the private repository', () => {
   assert.match(messages('Update the app.')[0], /UnitPad/);
   assert.match(messages('Run `npm run check:examples`.')[0], /private/);
+  assert.match(messages('Run `pnpm run check:examples`.')[0], /private/);
   assert.deepEqual(messages('Run `npm run check`.'), []);
   assert.match(messages('See `src/modules/index.ts`.')[0], /private/);
   assert.match(messages('See https://github.com/unitpad/unitpad/blob/main/x.md.')[0], /private/);

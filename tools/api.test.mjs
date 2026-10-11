@@ -1,4 +1,4 @@
-/** The names check (`api.mjs`): how it reads a module, what it says a change needs, and that this repository passes. Run with `npm test`. */
+/** The names check (`api.mjs`): how it reads a module, what it says a change needs, and that this repository passes. Run with `pnpm test`. */
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { test } from 'node:test';
