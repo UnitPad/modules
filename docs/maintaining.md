@@ -42,7 +42,7 @@ edited by hand.
 | `.github/workflows/check.yml` | Each pull request and each push to `main` | `pnpm install --frozen-lockfile`, installs `numbat`, then `pnpm run check` |
 | `.github/workflows/release.yml` | A tag `vX.Y.Z` | The same check, then the tag, `api.json` and `values.json` must match the version, then `npm publish` with provenance (npm, not pnpm: see below) |
 | `.github/workflows/maintenance.yml` | Each Monday | Lists the modules that are due a check, and fails when a source no longer answers |
-| `.github/dependabot.yml` | Each Monday | Opens pull requests for the packages and Actions updates |
+| `.github/dependabot.yml` | Each Monday | Opens pull requests for Actions updates only |
 
 The release workflow holds no secret. The package's settings on npmjs.com name `UnitPad/modules` and `release.yml` as its trusted
 publisher, so npm accepts the publish from that workflow alone. If a release fails with an authentication error, check that setting first.
@@ -50,6 +50,15 @@ publisher, so npm accepts the publish from that workflow alone. If a release fai
 The packages are installed and checked with pnpm, and the release publishes with `npm publish` on purpose. Trusted publishing and provenance are
 features of the npm command line, and the trust on npmjs.com is tied to the file name `release.yml`. The workflow installs npm 11.21.0 for it,
 because Node 22 ships npm 10. Keep the file name, the job name, the tag trigger and `id-token: write` as they are.
+
+## Updating dependencies
+
+The five packages are development tools, and nothing runs at runtime. Dependabot does not update them. Update them by hand:
+
+1. Run `pnpm outdated` to list what has a newer version.
+2. Run `pnpm update --interactive` and choose what to move. pnpm refuses a version younger than 14 days (`minimumReleaseAge` in `pnpm-workspace.yaml`), which is the rule of this repository.
+3. Run `pnpm run check`, then commit `package.json` and `pnpm-lock.yaml` together.
+4. After 2026-10-16, delete the two `minimumReleaseAgeExclude` lines in `pnpm-workspace.yaml`: `eslint@10.12.0` and `globals@17.13.0` have matured by then, and the lines do nothing.
 
 ## Make a release
 
