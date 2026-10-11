@@ -49,7 +49,7 @@
     "values:update": "node tools/values.mjs --update && prettier --write values.json",
     "values:release": "node tools/values.mjs --release",
     "numbat": "node tools/install-numbat.mjs",
-    "check": "npm run lint && npm run lint:md && npm run format:check && npm test && node tools/check-docs.mjs && node tools/style.mjs && node tools/api.mjs && node tools/values.mjs && node tools/pack-check.mjs",
+    "check": "pnpm run lint && pnpm run lint:md && pnpm run format:check && pnpm test && node tools/check-docs.mjs && node tools/style.mjs && node tools/api.mjs && node tools/values.mjs && node tools/pack-check.mjs",
     "check:docs": "node tools/check-docs.mjs",
     "style": "node tools/style.mjs",
     "check:pack": "node tools/pack-check.mjs",

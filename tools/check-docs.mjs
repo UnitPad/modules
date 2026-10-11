@@ -26,7 +26,7 @@ const BANNED_TERMS = [
 ];
 /** What a document of this repository must not carry: the private repository's commands and its name for UnitPad. */
 const PRIVATE_ONLY = [
-  [/\bnpm run (check:[\w-]+|extract:[\w-]+|build:wasm|a11y|fuzz)\b/, 'a script of the private repository'],
+  [/\b(?:npm|pnpm) run (check:[\w-]+|extract:[\w-]+|build:wasm|a11y|fuzz)\b/, 'a script of the private repository'],
   [/\bcheck:examples\b/, 'a check of the private repository'],
   [/\bthe app\b|\bapp's\b/i, 'say "UnitPad"'],
   [/github\.com\/unitpad\/unitpad(?![-\w])/i, 'a link into the private repository'],

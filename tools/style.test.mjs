@@ -1,4 +1,4 @@
-/** The style check (`style.mjs`): each rule fires on a small bad module, and these modules pass them all. Run with `npm test`. */
+/** The style check (`style.mjs`): each rule fires on a small bad module, and these modules pass them all. Run with `pnpm test`. */
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
