@@ -1,5 +1,5 @@
 {
-  "version": "0.1.3",
+  "version": "0.1.4",
   "numbat": "1.24.0",
   "modules": {
     "availability": {
