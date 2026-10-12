@@ -39,10 +39,10 @@ edited by hand.
 
 | File | Runs | What it does |
 |---|---|---|
-| `.github/workflows/check.yml` | Each pull request and each push to `main` | `pnpm install --frozen-lockfile`, installs `numbat`, then `pnpm run check` |
+| `.github/workflows/check.yml` | Each push to `main`, and each pull request from a contributor | `pnpm install --frozen-lockfile`, installs `numbat`, then `pnpm run check` |
 | `.github/workflows/release.yml` | A tag `vX.Y.Z` | The same check, then the tag, `api.json` and `values.json` must match the version, then `npm publish` with provenance (npm, not pnpm: see below) |
 | `.github/workflows/maintenance.yml` | Each Monday | Lists the modules that are due a check, and fails when a source no longer answers |
-| `.github/dependabot.yml` | Each Monday | Opens pull requests for Actions updates only |
+| `.github/dependabot.yml` | Each Monday | Opens pull requests for Actions updates only. The maintainer merges or closes each one |
 
 The release workflow holds no secret. The package's settings on npmjs.com name `UnitPad/modules` and `release.yml` as its trusted
 publisher, so npm accepts the publish from that workflow alone. If a release fails with an authentication error, check that setting first.
@@ -51,13 +51,21 @@ The packages are installed and checked with pnpm, and the release publishes with
 features of the npm command line, and the trust on npmjs.com is tied to the file name `release.yml`. The workflow installs npm 11.21.0 for it,
 because Node 22 ships npm 10. Keep the file name, the job name, the tag trigger and `id-token: write` as they are.
 
+## How the maintainer changes `main`
+
+This repository has one maintainer, and the maintainer does not open pull requests. The maintainer commits on `main`, runs
+`pnpm run check`, and pushes. The branch rule of `main` requires the check, but the rule does not apply to the maintainer.
+The check then runs on the push.
+
+A contributor opens a pull request, and the check runs on it. The steps in `CONTRIBUTING.md` are for a contributor.
+
 ## Updating dependencies
 
 The five packages are development tools, and nothing runs at runtime. Dependabot does not update them. Update them by hand:
 
 1. Run `pnpm outdated` to list what has a newer version.
 2. Run `pnpm update --interactive` and choose what to move. pnpm refuses a version younger than 14 days (`minimumReleaseAge` in `pnpm-workspace.yaml`), which is the rule of this repository.
-3. Run `pnpm run check`, then commit `package.json` and `pnpm-lock.yaml` together.
+3. Run `pnpm run check`, then commit `package.json` and `pnpm-lock.yaml` together, and push to `main`.
 4. After 2026-10-16, delete the two `minimumReleaseAgeExclude` lines in `pnpm-workspace.yaml`: `eslint@10.12.0` and `globals@17.13.0` have matured by then, and the lines do nothing.
 
 ## Make a release
@@ -66,11 +74,11 @@ The five packages are development tools, and nothing runs at runtime. Dependabot
 2. Run `pnpm run api:update` and `pnpm run values:update`. They write the names and the values of this release to `api.json` and
    `values.json`, in the formatter's layout. Commit them with the version.
 3. Run `pnpm run check`. It must pass.
-4. Tag `vX.Y.Z`, equal to the version in `package.json`, and push the tag.
+4. Push the commit to `main`. Tag that commit `vX.Y.Z`, equal to the version in `package.json`, and push the tag.
 5. The release workflow publishes the tag with npm provenance. A published version then names the commit it came from. Nobody publishes
    from a laptop. npm takes a minute or two to show the new version.
    Until then, the first publish of a package shows a placeholder version, `0.0.0-stage`.
-6. UnitPad moves to the new version with its own pull request.
+6. UnitPad moves to the new version in a commit of its own, after its example sheets pass with the new version.
 
 ## Not built
 

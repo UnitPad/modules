@@ -94,6 +94,6 @@ moves needs a patch step, and the check lists each old and new value, so a revie
 
 ## How a change reaches readers
 
-A release of this package reaches readers only inside a release of UnitPad. UnitPad pins an exact version and moves it by its own
-pull request, and it checks its example sheets against the new version first. UnitPad never fetches modules while it runs. A
+A release of this package reaches readers only inside a release of UnitPad. UnitPad pins an exact version and moves it in a commit of
+its own, and it checks its example sheets against the new version first. UnitPad never fetches modules while it runs. A
 reader's results change only when they update UnitPad. You change this repository only. You never need to change both in one go.
